@@ -1,0 +1,5 @@
+pymongo
+selenium
+pika
+beautifulsoup4
+requests
