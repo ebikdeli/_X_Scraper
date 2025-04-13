@@ -11,6 +11,15 @@ from mongodb_handler import save_to_mongodb
 from logger_setup import setup_logger
 from config import AMAZON_URLS, QUEUE_NAME
 
+try:
+
+    input('WQANNT QUIET?')
+    exit()
+except Exception as e:
+    print(e.__str__())
+    input('ERROR///')
+    exit()
+
 logger = setup_logger("main")
 
 def process_message(ch, method, properties, body):
