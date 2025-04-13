@@ -7,7 +7,7 @@ This module handles the connection to MongoDB and saving or updating scraped pro
 
 from pymongo import MongoClient
 
-def get_db_client():
+def get_db_client() -> MongoClient:
     """Return a MongoDB client instance."""
     return MongoClient("mongodb://localhost:27017/")
 
