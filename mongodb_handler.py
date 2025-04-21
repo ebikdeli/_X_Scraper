@@ -15,7 +15,7 @@ def save_to_mongodb(product, logger):
     """Insert or update the product document in MongoDB."""
     try:
         client = get_db_client()
-        db = client["ecommerce_scraper"]
+        db = client["x_scraper"]
         products_collection = db["products"]
         products_collection.update_one(
             {"url": product["url"]},
