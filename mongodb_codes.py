@@ -4,7 +4,7 @@ from bson.objectid import ObjectId
 from datetime import datetime
 
 class MongoDB_CRUD:
-    def __init__(self, db_name='x_scraper', collection_name='x-scraper', host='localhost', port=27017):
+    def __init__(self, db_name='x_scraper', collection_name='users', host='localhost', port=27017):
         """
         Initialize MongoDB connection and collection
         """
@@ -26,7 +26,8 @@ class MongoDB_CRUD:
         try:
             # Add timestamp if not provided
             if 'created_at' not in data:
-                data['created_at'] = datetime.utcnow()
+                # data['created_at'] = datetime.utcnow()
+                data['created_at'] = datetime.now()
             
             result = self.collection.insert_one(data)
             print(f"Document inserted with id: {result.inserted_id}")
@@ -72,7 +73,8 @@ class MongoDB_CRUD:
         """
         try:
             # Add updated_at timestamp
-            update_data['updated_at'] = datetime.utcnow()
+            # update_data['updated_at'] = datetime.utcnow()
+            update_data['created_at'] = datetime.now()
             
             result = self.collection.update_one(
                 {'_id': ObjectId(document_id)},
