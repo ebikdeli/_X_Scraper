@@ -1,5 +1,5 @@
 import unittest
-from driver_setup import setup_driver
+from core.driver_setup import setup_driver
 
 
 class TestSetupDriver(unittest.TestCase):
