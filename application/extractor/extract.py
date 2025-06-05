@@ -1,9 +1,9 @@
 from selenium.common.exceptions import WebDriverException
-from core.selenium_driver import get_chrome_driver
+from application.driver.chrome import setup_driver
 import time
 
 def extract_product_data(url):
-    driver = get_chrome_driver()
+    driver = setup_driver()
     try:
         driver.get(url)
         time.sleep(3)  # Let JavaScript render

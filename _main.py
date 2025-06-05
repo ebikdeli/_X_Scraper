@@ -1,7 +1,7 @@
 import concurrent.futures
-from core.logger import setup_logger
-from core.database import SQLiteDB
-from core.extractor import extract_product_data
+from logger.logger import setup_logger
+from application.database.sqlite import SQLiteDB
+from application.extractor.extract import extract_product_data
 
 logger = setup_logger()
 db = SQLiteDB()
