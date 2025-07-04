@@ -20,3 +20,6 @@ AMAZON_URLS = [
 # RabbitMQ settings
 RABBITMQ_URL = "amqp://guest:guest@localhost:5672/"
 QUEUE_NAME = "amazon_scrape_queue"
+
+# Method to used (requests or selenium)
+METHOD = 'selenium'

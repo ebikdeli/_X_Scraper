@@ -177,3 +177,5 @@ cython_debug/
 *.vsdx
 *.vscode/
 *_oldies/
+*.xlsx
+project-*

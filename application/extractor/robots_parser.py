@@ -1,6 +1,9 @@
 import requests
 from urllib.parse import urljoin
 from typing import Dict, List, Optional, Tuple
+from application.driver.chrome import setup_driver
+import config
+
 
 class RobotsTxtParser:
     def __init__(self, base_url: str):
@@ -8,16 +11,41 @@ class RobotsTxtParser:
         self.robots_url = urljoin(self.base_url, '/robots.txt')
         self.user_agents: Dict[str, Dict[str, List[str]]] = {}
         self.sitemaps: List[str] = []
-        self._fetch_and_parse()
+        self.driver = None
+
 
     def _fetch_and_parse(self) -> None:
-        """Fetches and parses the robots.txt file."""
+        """Fetches and parses the robots.txt file using specific config.METHOD"""
+        try:
+            # Scrape robots.txt using requests
+            if config.METHOD == 'requests':
+                self._scrape_requests()
+            # Scrape robots.txt using selenium
+            elif config.METHOD == 'selenium':
+                self._scrape_selenium()
+        except Exception as e:
+            print('config.method did not specified')
+    
+    def _scrape_requests(self) -> None:
+        """Scrapes the robots.txt file using requests module."""
         try:
             response = requests.get(self.robots_url, timeout=5)
             response.raise_for_status()
             self._parse_content(response.text)
         except requests.RequestException as e:
             print(f"Error fetching robots.txt: {e}")
+    
+    def _scrape_selenium(self) -> None:
+        """Scrapes the robots.txt file using Selenium module."""
+        try:
+            self.driver = setup_driver()
+            self.driver.get(self.robots_url)
+            content = self.driver.page_source
+            if not content:
+                raise ValueError("No content found in robots.txt")
+            self._parse_content(content)
+        except Exception as e:
+            print(f"Error fetching robots.txt with Selenium: {e}")
 
     def _parse_content(self, content: str) -> None:
         """Parses the robots.txt content."""
