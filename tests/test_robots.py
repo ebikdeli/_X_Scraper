@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from application.extractor.robots_parser import RobotsTxtParser
+from requests.exceptions import RequestException
 
 class TestRobotsTxtParserRequests(unittest.TestCase):
     
@@ -28,7 +29,8 @@ class TestRobotsTxtParserRequests(unittest.TestCase):
     @patch("application.extractor.robots_parser.requests.get")
     def test_scrape_requests_failure(self, mock_get):
         # Simulate a requests exception
-        mock_get.side_effect = Exception("Connection error")
+        # Patch execute to raise requests.exceptions.RequestException, not Exception
+        mock_get.side_effect = RequestException("Connection error")
 
         parser = RobotsTxtParser("https://example.com")
         # Should not raise, just print error

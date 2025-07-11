@@ -1,13 +1,34 @@
 import sqlite3
 from sqlite3 import Error
+from typing import Optional, Dict, Any
 
 class SQLiteDB:
-    def __init__(self, db_file="scraped_data.db"):
-        self.db_file = db_file
-        self.conn = self.create_connection()
+    """
+    A simple SQLite database handler for storing and managing product data.
+
+    This class provides methods to connect to an SQLite database, create a products table,
+    and insert product records. It is designed for use in web scraping or data collection
+    applications where structured product information needs to be persisted.
+    """
+
+    def __init__(self, db_file: str = "scraped_data.db") -> None:
+        """
+        Initialize the SQLiteDB instance.
+
+        Args:
+            db_file (str): The filename for the SQLite database. Defaults to 'scraped_data.db'.
+        """
+        self.db_file: str = db_file
+        self.conn: Optional[sqlite3.Connection] = self.create_connection()
         self.create_table()
 
-    def create_connection(self):
+    def create_connection(self) -> Optional[sqlite3.Connection]:
+        """
+        Establish a connection to the SQLite database.
+
+        Returns:
+            Optional[sqlite3.Connection]: The database connection object if successful, otherwise None.
+        """
         try:
             conn = sqlite3.connect(self.db_file)
             return conn
@@ -15,7 +36,16 @@ class SQLiteDB:
             print(f"Database connection error: {e}")
             return None
 
-    def create_table(self):
+    def create_table(self) -> None:
+        """
+        Create the 'products' table in the database if it does not already exist.
+
+        The table stores product information such as URL, title, price, description, images,
+        name, company name, and category.
+
+        Returns:
+            None
+        """
         try:
             sql = '''CREATE TABLE IF NOT EXISTS products (
                         id INTEGER PRIMARY KEY,
@@ -28,25 +58,42 @@ class SQLiteDB:
                         company_name TEXT,
                         category TEXT
                     );'''
-            self.conn.execute(sql)
-            self.conn.commit()
+            if self.conn is not None:
+                self.conn.execute(sql)
+                self.conn.commit()
+            else:
+                print("No database connection. Table creation skipped.")
         except Error as e:
             print(f"Error creating table: {e}")
 
-    def insert_data(self, product):
+    def insert_data(self, product: Dict[str, Any]) -> None:
+        """
+        Insert a product record into the 'products' table.
+
+        Args:
+            product (Dict[str, Any]): A dictionary containing product details. Expected keys are:
+                'url' (str), 'title' (str), 'price' (str), 'description' (str), 
+                'images' (list of str), 'name' (str), 'company_name' (str), and 'category' (str).
+
+        Returns:
+            None
+        """
         try:
             sql = '''INSERT INTO products (url, title, price, description, images, name, company_name, category)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)'''
-            self.conn.execute(sql, (
-                product.get("url"),
-                product.get("title"),
-                product.get("price"),
-                product.get("description"),
-                ",".join(product.get("images", [])),
-                product.get("name"),
-                product.get("company_name"),
-                product.get("category")
-            ))
-            self.conn.commit()
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)'''
+            if self.conn is not None:
+                self.conn.execute(sql, (
+                    product.get("url"),
+                    product.get("title"),
+                    product.get("price"),
+                    product.get("description"),
+                    ",".join(product.get("images", [])),
+                    product.get("name"),
+                    product.get("company_name"),
+                    product.get("category")
+                ))
+                self.conn.commit()
+            else:
+                print("No database connection. Data insertion skipped.")
         except Error as e:
             print(f"Error inserting data: {e}")
