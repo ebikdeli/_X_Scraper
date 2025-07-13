@@ -14,17 +14,27 @@ class RobotsTxtParser:
         self.driver = None
 
 
-    def _fetch_and_parse(self) -> None:
-        """Fetches and parses the robots.txt file using specific config.METHOD"""
+    def _fetch_and_parse(self, method: Optional[str] = None) -> None:
+        """
+        Fetches and parses the robots.txt file using the specified scraping method.
+
+        Args:
+            method (str, optional): The scraping method to use ('requests' or 'selenium').
+                                    If None, uses config.METHOD.
+        """
+        chosen_method: str = method if isinstance(method, str) and method else getattr(config, "METHOD", "requests")
+        methods = {
+            "requests": self._scrape_requests,
+            "selenium": self._scrape_selenium,
+        }
+        scrape_func = methods.get(chosen_method)
+        if not scrape_func:
+            print(f"Unknown scraping method: {chosen_method}")
+            return
         try:
-            # Scrape robots.txt using requests
-            if config.METHOD == 'requests':
-                self._scrape_requests()
-            # Scrape robots.txt using selenium
-            elif config.METHOD == 'selenium':
-                self._scrape_selenium()
+            scrape_func()
         except Exception as e:
-            print('config.method did not specified')
+            print(f"Error fetching robots.txt using '{chosen_method}': {e}")
     
     def _scrape_requests(self) -> None:
         """Scrapes the robots.txt file using requests module."""
