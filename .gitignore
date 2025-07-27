@@ -172,10 +172,3 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-
-*.txt
-*.vsdx
-*.vscode/
-*_oldies/
-*.xlsx
-project-*
