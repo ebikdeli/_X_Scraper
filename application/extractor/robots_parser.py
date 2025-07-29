@@ -13,7 +13,6 @@ class RobotsTxtParser:
         self.sitemaps: List[str] = []
         self.driver = None
 
-
     def _fetch_and_parse(self, method: Optional[str] = None) -> None:
         """
         Fetches and parses the robots.txt file using the specified scraping method.
@@ -108,6 +107,27 @@ class RobotsTxtParser:
     def get_rules(self, user_agent: str = '*') -> Optional[Dict[str, List[str]]]:
         """Returns rules for a specific user-agent."""
         return self.user_agents.get(user_agent)
+
+
+class RobotsExtLinks:
+    def __init__(self, robots_parser: RobotsTxtParser) -> None:
+        self.robots_parser = robots_parser
+    
+    def ext_sitemap_links(self):
+        """Read all the sitemap links extracted from robots
+        """
+        sitemap_links = self.robots_parser.get_sitemaps()
+        for sm_link in sitemap_links:
+            pass
+        
+    def _check_sm_product_link(self, sm_link):
+        """Check if the current sitemap link is a product link"""
+        pass
+    
+    def _check_sm_link(self, sm_link):
+        """Check if the current sitemap link is another sitemap link"""
+        pass
+
 
 # Example Usage
 if __name__ == "__main__":
