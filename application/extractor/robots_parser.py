@@ -2,7 +2,12 @@ import requests
 from urllib.parse import urljoin
 from typing import Dict, List, Optional, Tuple
 from application.driver.chrome import setup_driver
+from logger.logger import setup_logger
 import config
+import re
+
+
+logger = setup_logger(__name__)
 
 
 class RobotsTxtParser:
@@ -114,19 +119,97 @@ class RobotsExtLinks:
         self.robots_parser = robots_parser
     
     def ext_sitemap_links(self):
-        """Read all the sitemap links extracted from robots
         """
-        sitemap_links = self.robots_parser.get_sitemaps()
-        for sm_link in sitemap_links:
-            pass
-        
-    def _check_sm_product_link(self, sm_link):
-        """Check if the current sitemap link is a product link"""
-        pass
+        Read all the sitemap links extracted from robots.
+        If a link belongs to a product, add it to product_links.
+        If a link belongs to another sitemap, add it to sitemap_links for further checking.
+        Continue until no sitemap links remain to check.
+        Returns:
+            List[str]: All product links found in the sitemaps.
+        """
+        product_links: List[str] = []
+        to_check: List[str] = self.robots_parser.get_sitemaps()
+        checked: set[str] = set()
+        if not to_check:
+            logger.warning("No sitemaps found in robots.txt.")
+            return product_links
+        logger.info(f"Starting with {len(to_check)} sitemap links to check.")
+        # Loop through the sitemap links to check for product links or more sitemaps
+        while to_check:
+            sm_link = to_check.pop(0)
+            if sm_link in checked:
+                continue
+            checked.add(sm_link)
+            logger.info(f"Checking sitemap link: {sm_link}")
+            # Check if the link is a product link or another sitemap link
+            if self._check_sm_product_link(sm_link):
+                product_links.append(sm_link)
+                logger.info(f"Found product link: {sm_link}")
+            elif self._check_sm_link(sm_link):
+                content = self._fetch_content(sm_link)
+                if content:
+                    # If the link is a sitemap, find all links in it
+                    logger.info(f"Found sitemap link: {sm_link}")
+                    found_links = re.findall(r"<loc>(.*?)</loc>", content)
+                    to_check.extend(found_links)
+        # Return the product links found in the sitemaps
+        return product_links
+
+    def _check_sm_product_link(self, sm_link: str) -> bool:
+        """
+        Check if the current sitemap link is likely a product link.
+
+        Args:
+            sm_link (str): The sitemap link to check.
+
+        Returns:
+            bool: True if the link appears to be a product link, False otherwise.
+        """
+        # Common patterns for product links in e-commerce sitemaps
+        product_keywords = ["product", "item", "prod", "detail", "goods"]
+        # Check if any keyword is in the URL path (case-insensitive)
+        path = sm_link.lower()
+        return any(keyword in path for keyword in product_keywords)
     
-    def _check_sm_link(self, sm_link):
-        """Check if the current sitemap link is another sitemap link"""
-        pass
+    def _check_sm_link(self, sm_link: str) -> bool:
+        """
+        Check if the current sitemap link is another sitemap link.
+
+        Args:
+            sm_link (str): The sitemap link to check.
+
+        Returns:
+            bool: True if the link appears to be a sitemap link, False otherwise.
+        """
+        # Common patterns for sitemap links
+        sitemap_keywords = ["sitemap", "sitemap.xml", ".xml"]
+        path = sm_link.lower()
+        return any(keyword in path for keyword in sitemap_keywords)
+
+    def _fetch_content(self, sm_link: str) -> Optional[str]:
+        """
+        Fetch the content of a sitemap link based on method specified in config.
+
+        Args:
+            sm_link (str): The sitemap link to fetch.
+
+        Returns:
+            Optional[str]: _description_
+        """
+        method = getattr(config, "METHOD", "requests")
+        if method == "selenium":
+            driver = setup_driver()
+            driver.get(sm_link)
+            content = driver.page_source
+            driver.quit()
+            return content
+        else:
+            try:
+                response = requests.get(sm_link, timeout=5)
+                response.raise_for_status()
+                return response.text
+            except Exception:
+                return None
 
 
 # Example Usage
