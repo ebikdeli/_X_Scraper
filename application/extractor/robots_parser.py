@@ -210,24 +210,3 @@ class RobotsExtLinks:
                 return response.text
             except Exception:
                 return None
-
-
-# Example Usage
-if __name__ == "__main__":
-    website_url = "https://www.google.com"  # Replace with any website
-    parser = RobotsTxtParser(website_url)
-
-    # Print all rules for all user-agents
-    print(f"Rules for {website_url}:")
-    for ua, rules in parser.user_agents.items():
-        print(f"\nUser-agent: {ua}")
-        print(f"  Allow: {rules['allow']}")
-        print(f"  Disallow: {rules['disallow']}")
-
-    # Check if a path is allowed
-    test_path = "/search"
-    test_ua = "Googlebot"
-    print(f"\nCan '{test_ua}' access '{test_path}'? {parser.is_allowed(test_ua, test_path)}")
-
-    # Print sitemaps
-    print("\nSitemaps:", parser.get_sitemaps())

@@ -7,7 +7,6 @@ def extract_product_data(url):
     try:
         driver.get(url)
         time.sleep(3)  # Let JavaScript render
-
         product = {
             "url": url,
             "title": driver.title or "N/A",
