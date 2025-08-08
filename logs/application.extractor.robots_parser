@@ -46,3 +46,9 @@
 2025-08-05 23:05:02,055 - INFO - Checking sitemap link: https://example.com/products.xml
 2025-08-05 23:05:02,055 - INFO - Found product link: https://example.com/products.xml
 2025-08-05 23:05:02,057 - ERROR - Error fetching robots.txt: Connection error
+2025-08-06 14:27:05,397 - INFO - Starting with 2 sitemap links to check.
+2025-08-06 14:27:05,398 - INFO - Checking sitemap link: https://example.com/sitemap.xml
+2025-08-06 14:27:05,398 - INFO - Found sitemap link: https://example.com/sitemap.xml
+2025-08-06 14:27:05,398 - INFO - Checking sitemap link: https://example.com/products.xml
+2025-08-06 14:27:05,398 - INFO - Found product link: https://example.com/products.xml
+2025-08-06 14:27:05,400 - ERROR - Error fetching robots.txt: Connection error

@@ -230,10 +230,19 @@ class RobotsExtLinks:
             self.driver = None
 
     def _extract_links(self, content: str) -> List[str]:
+        """Extract all <loc> links from the sitemap content.
+
+        Args:
+            content (str): The XML content of the sitemap.
+
+        Returns:
+            List[str]: A list of extracted <loc> links.
+        """
+        links = []
         try:
             # Remove XML declaration for easier parsing if present
-            content = re.sub(r'<\?xml.*?\?>', '', content).strip()
-            root = ET.fromstring(content)
+            content_clean = re.sub(r'<\?xml.*?\?>', '', content).strip()
+            root = ET.fromstring(content_clean)
             # Extract namespace if present
             ns_match = re.match(r'\{(.*)\}', root.tag)
             ns = {'ns': ns_match.group(1)} if ns_match else {}
@@ -242,6 +251,10 @@ class RobotsExtLinks:
                 locs = root.findall('.//ns:loc', ns)
             else:
                 locs = root.findall('.//loc')
-            return [loc.text for loc in locs if loc.text]
+            links.extend([loc.text for loc in locs if loc.text])
         except Exception:
-            return []
+            # If not XML, try to extract URLs using regex
+            # This will match http(s) links in plain text or malformed XML
+            url_pattern = r'https?://[^\s"<>\']+'
+            links = re.findall(url_pattern, content)
+        return links

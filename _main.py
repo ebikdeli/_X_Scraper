@@ -1,7 +1,7 @@
 import concurrent.futures
 from logger.logger import setup_logger
 from application.database.sqlite import SQLiteDB
-from application.extractor.extract import extract_product_data
+from application.extractor.extract import Extractor
 
 logger = setup_logger()
 db = SQLiteDB()
@@ -13,7 +13,8 @@ urls = [
 
 def scrape_and_store(url):
     logger.info(f"Scraping URL: {url}")
-    product = extract_product_data(url)
+    extractor = Extractor(url)
+    product = extractor.extract()
     if "error" not in product:
         db.insert_data(product)
         logger.info(f"Inserted data for: {url}")
