@@ -65,8 +65,8 @@ class Extractor:
                 "price": self._get_generic_field_value('price', 0, css_selector='.woocommerce-Price-amount'),
                 "description": self._get_generic_field_value('description', '', css_selector='.woocommerce-product-details__short-description'),
                 "images": self._get_generic_field_value('images', [], css_selector='.woocommerce-product-gallery__image img', multi_value=True),
-                "company_name": self._get_generic_field_value('company_name', 'Unknown', css_selector='.brand, .manufacturer'),
-                "category": self._get_generic_field_value('category', 'Uncategorized', css_selector='.posted_in a'),
+                "company_name": self._get_generic_field_value('company_name', '', css_selector='.brand, .manufacturer'),
+                "category": self._get_generic_field_value('category', '', css_selector='.posted_in a'),
             }
         except Exception:
             if self.driver:
@@ -84,19 +84,24 @@ class Extractor:
         except WebDriverException as e:
             logger.error(f"WebDriverException: {e}")
             self.driver.quit()
-            return False
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+            self.driver.quit()
+        return False
     
     def _initialize_soup(self) -> bool:
         """Initializes the BeautifulSoup object if not already done. If initialization fails, it returns False."""
         try:
-            response = requests.get(self.product_url, timeout=10)
+            response = requests.get(self.product_url)
             response.raise_for_status()
             if not self.soup:
                 self.soup = BeautifulSoup(response.text, "html.parser")
             return True
         except requests.RequestException as e:
             logger.error(f"RequestException: {e}")
-            return False
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+        return False
     
     def _check_method(self, method: Optional[str] = None) -> str| None:
         """Checks and returns the extraction method to be used. If neither soup nor driver is available, or invalid method chosen, it logs an error."""
@@ -130,11 +135,12 @@ class Extractor:
                     elements = self.driver.find_elements(By.XPATH, xpath)
                 else:
                     raise ValueError("Either css_selctor or xpath must be provided for Selenium method.")
+                # logger.debug(f"Extracting {field_name} using Selenium with css_selector: {css_selector} or xpath: {xpath}")
                 for elem in elements:
                     if elem.text.strip():
                         data[f'{field_name}'].append(elem.text.strip())
             # Extract data based on soup
-            if chosen_method == "requests" and self.soup:
+            elif chosen_method == "requests" and self.soup:
                 if not css_selector:
                     raise ValueError("css_selector must be provided for Requests method.")
                 tags = self.soup.select(f"{css_selector}")
@@ -144,6 +150,7 @@ class Extractor:
             else:
                 raise ValueError("Invalid method specified or neither soup nor driver is available.")
             data.update({'status': 'ok', 'msg': f'Successfully extracted "{field_name}" field data using "{chosen_method}"'})
+            # print(f'EXTRACTED DATA: {data}')
         except ValueError as ve:
             logger.error(f"ValueError: {ve}")
             data.update({'status': 'nok', 'msg': f'Error: {ve}'})
@@ -160,6 +167,7 @@ class Extractor:
                 if not chosen_method:
                     raise ValueError("Invalid method specified or neither soup nor driver is available.")
             field_data: dict = self._find_product_field_data(field_name=field_name,css_selector=css_selector, xpath=xpath, method=method)
+            # print(f'FIELD DATA: {field_data}')
             field_value_list = field_data.get(field_name, default_return_value)
         except ValueError as ve:
             logger.error(f"ValueError: {ve}")
