@@ -177,3 +177,12 @@ class Extractor:
             return field_value_list if field_value_list else default_return_value
         return field_value_list[0] if field_value_list else default_return_value
     
+    def get_product_name_value(self):
+        """Get product name value manually
+        """
+        try:
+            pass
+        except Exception as e:
+            logger.error(f'Error in getting product name value: {e.__str__()}')
+        return ''
+    
