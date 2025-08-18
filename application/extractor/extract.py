@@ -1,3 +1,9 @@
+"""
+This module provides the Extractor class which can extract product information from e-commerce websites product pages.
+It supports both Selenium and Requests methods for extraction, allowing flexibility based on the environment and requirements.
+This module work on a single product page at a time.
+"""
+
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.common.by import By
@@ -185,4 +191,3 @@ class Extractor:
         except Exception as e:
             logger.error(f'Error in getting product name value: {e.__str__()}')
         return ''
-    
