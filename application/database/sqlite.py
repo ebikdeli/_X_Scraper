@@ -66,34 +66,3 @@ class SQLiteDB:
         except Error as e:
             print(f"Error creating table: {e}")
 
-    def insert_data(self, product: Dict[str, Any]) -> None:
-        """
-        Insert a product record into the 'products' table.
-
-        Args:
-            product (Dict[str, Any]): A dictionary containing product details. Expected keys are:
-                'url' (str), 'title' (str), 'price' (str), 'description' (str), 
-                'images' (list of str), 'name' (str), 'company_name' (str), and 'category' (str).
-
-        Returns:
-            None
-        """
-        try:
-            sql = '''INSERT INTO products (url, title, price, description, images, name, company_name, category)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)'''
-            if self.conn is not None:
-                self.conn.execute(sql, (
-                    product.get("url"),
-                    product.get("title"),
-                    product.get("price"),
-                    product.get("description"),
-                    ",".join(product.get("images", [])),
-                    product.get("name"),
-                    product.get("company_name"),
-                    product.get("category")
-                ))
-                self.conn.commit()
-            else:
-                print("No database connection. Data insertion skipped.")
-        except Error as e:
-            print(f"Error inserting data: {e}")
