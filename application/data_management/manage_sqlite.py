@@ -10,9 +10,9 @@ from logger.logger import setup_logger
 logger = setup_logger(__name__)
 
 
-def upsert_product_data(product_data: dict) -> bool:
+def insert_product_data(product_data: dict) -> bool:
     """
-    Insert or update product data into the SQLite database. Return True if successful.
+    Insert product data into the SQLite database. Return True if successful.
     Args:
         product_data (dict): Dictionary containing product details.
     """
@@ -41,7 +41,7 @@ def upsert_product_data(product_data: dict) -> bool:
                 )
             )
             logger.info(f"Updated product {product_data['product_id']}")
-            return True
+            return True 
         else:
             # Insert new record
             cur.execute(
@@ -73,6 +73,6 @@ def extract_and_upsert(url: str):
     extractor = Extractor(url)
     product_data = extractor.extract()
     if product_data:
-        upsert_product_data(product_data)
+        insert_product_data(product_data)
     else:
         logger.warning(f"No product data extracted from {url}")

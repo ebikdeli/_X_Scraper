@@ -1,6 +1,11 @@
 import sqlite3
 from sqlite3 import Error
 from typing import Optional, Dict, Any
+from logger.logger import setup_logger
+
+
+logger = setup_logger(__name__)
+
 
 class SQLiteDB:
     """
@@ -66,3 +71,19 @@ class SQLiteDB:
         except Error as e:
             print(f"Error creating table: {e}")
 
+    def insert_product_data(self, data: dict) -> bool:
+        """Insert data into the products data
+
+        Returns:
+            bool: _description_
+        """
+        if not self.conn:
+            logger.error(f'Error: Cannot connect to "{self.db_file}"')
+            return False
+        cur = self.conn.cursor()
+        sql = f"""INSERT INTO products (
+            url, title, price, description, images, name, company_name, created, updated
+            )
+                VALUES (?, ?, ?, ?, ?, DATETIME('now'))"""
+        # ! TO BE COMPLETED
+        return True
