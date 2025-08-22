@@ -2,6 +2,7 @@ import sqlite3
 from sqlite3 import Error
 from typing import Optional, Dict, Any
 from logger.logger import setup_logger
+from ._resources import current_timestamp
 
 
 logger = setup_logger(__name__)
@@ -61,7 +62,9 @@ class SQLiteDB:
                         images TEXT,
                         name TEXT,
                         company_name TEXT,
-                        category TEXT
+                        category TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     );'''
             if self.conn is not None:
                 self.conn.execute(sql)
@@ -71,19 +74,48 @@ class SQLiteDB:
         except Error as e:
             print(f"Error creating table: {e}")
 
-    def insert_product_data(self, data: dict) -> bool:
-        """Insert data into the products data
+    def insert_product_data(self, product_data: dict) -> bool:
+        """Insert product data into the products table
 
         Returns:
             bool: _description_
         """
-        if not self.conn:
-            logger.error(f'Error: Cannot connect to "{self.db_file}"')
+        try:
+            
+            if not self.conn:
+                logger.error(f'Error: Cannot connect to "{self.db_file}"')
+                return False
+            cur = self.conn.cursor()
+            sql = f"""INSERT INTO products (
+                url, title, price, description, images, name, company_name, created_at, updated_at
+                )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);"""
+            cur.execute(sql, (
+                product_data['url'],
+                product_data['title'],
+                product_data['price'],
+                product_data['description'],
+                product_data['images'],
+                product_data['name'],
+                product_data['company_name'],
+                current_timestamp(),
+                current_timestamp()
+            ))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error('Cannot insert product data into products table')
             return False
-        cur = self.conn.cursor()
-        sql = f"""INSERT INTO products (
-            url, title, price, description, images, name, company_name, created, updated
-            )
-                VALUES (?, ?, ?, ?, ?, DATETIME('now'))"""
-        # ! TO BE COMPLETED
+    
+    def update_product_data(self, product_data: dict, product_id: int) -> bool:
+        """Update products table using product_data
+
+        Args:
+            product_data (dict): _description_
+            product_id (int): _description_
+
+        Returns:
+            bool: _description_
+        """
+        # ! TO BE CONTINUE
         return True
