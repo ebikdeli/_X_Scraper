@@ -117,5 +117,37 @@ class SQLiteDB:
         Returns:
             bool: _description_
         """
-        # ! TO BE CONTINUE
-        return True
+        try:
+            
+            if not self.conn:
+                logger.error(f'Error: Cannot connect to "{self.db_file}"')
+                return False
+            cur = self.conn.cursor()
+            sql = f'SELECT * FROM products WHERE id={product_id}'
+            row = cur.execute(sql)
+            product_data = row.fetchone()
+            sql = f"""UPDATE products SET
+                url = ?,
+                title = ?,
+                price = ?,
+                description = ?,
+                images = ?,
+                name = ?,
+                company_name = ?,
+                updated_at = ?
+                WHERE id = {product_id};"""
+            cur.execute(sql, (
+                product_data['url'],
+                product_data['title'],
+                product_data['price'],
+                product_data['description'],
+                product_data['images'],
+                product_data['name'],
+                product_data['company_name'],
+                current_timestamp(),
+            ))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f'Cannot update product data for "{self.db_file}": {e.__str__()}')
+            return False
