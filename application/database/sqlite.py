@@ -91,15 +91,15 @@ class SQLiteDB:
                 )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);"""
             cur.execute(sql, (
-                product_data['url'],
-                product_data['title'],
+                f"{product_data['url']}",
+                f"{product_data['title']}",
                 product_data['price'],
-                product_data['description'],
-                product_data['images'],
-                product_data['name'],
-                product_data['company_name'],
-                current_timestamp(),
-                current_timestamp()
+                f"{product_data['description']}",
+                f"{product_data['images']}",
+                f"{product_data['name']}",
+                f"{product_data['company_name']}",
+                f"{current_timestamp()}",
+                f"{current_timestamp()}"
             ))
             self.conn.commit()
             return True
@@ -137,14 +137,14 @@ class SQLiteDB:
                 updated_at = ?
                 WHERE id = {product_id};"""
             cur.execute(sql, (
-                product_data['url'],
-                product_data['title'],
+                f"{product_data['url']}",
+                f"{product_data['title']}",
                 product_data['price'],
-                product_data['description'],
-                product_data['images'],
-                product_data['name'],
-                product_data['company_name'],
-                current_timestamp(),
+                f"{product_data['description']}",
+                f"{product_data['images']}",
+                f"{product_data['name']}",
+                f"{product_data['company_name']}",
+                f"{current_timestamp()}",
             ))
             self.conn.commit()
             return True
