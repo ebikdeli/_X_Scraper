@@ -8,30 +8,21 @@ from ._resources import current_timestamp
 logger = setup_logger(__name__)
 
 
-class SQLiteDB:
-    """
-    A simple SQLite database handler for storing and managing product data.
-
-    This class provides methods to connect to an SQLite database, create a products table,
-    and insert product records. It is designed for use in web scraping or data collection
-    applications where structured product information needs to be persisted.
-    """
-
+class SQLiteDBInit:
+    """Initialize the SQLite database and create the necessary tables."""
     def __init__(self, db_file: str = "scraped_data.db") -> None:
         """
-        Initialize the SQLiteDB instance.
-
+        Initialize the SQLiteDBInit instance.
         Args:
             db_file (str): The filename for the SQLite database. Defaults to 'scraped_data.db'.
         """
         self.db_file: str = db_file
         self.conn: Optional[sqlite3.Connection] = self.create_connection()
-        self.create_table()
+        self.create_product_table()
 
     def create_connection(self) -> Optional[sqlite3.Connection]:
         """
         Establish a connection to the SQLite database.
-
         Returns:
             Optional[sqlite3.Connection]: The database connection object if successful, otherwise None.
         """
@@ -42,18 +33,17 @@ class SQLiteDB:
             print(f"Database connection error: {e}")
             return None
 
-    def create_table(self) -> None:
+    def create_product_table(self) -> None:
         """
         Create the 'products' table in the database if it does not already exist.
-
         The table stores product information such as URL, title, price, description, images,
         name, company name, and category.
-
         Returns:
             None
         """
         try:
-            sql = '''CREATE TABLE IF NOT EXISTS products (
+            if self.conn is not None:
+                sql = '''CREATE TABLE IF NOT EXISTS products (
                         id INTEGER PRIMARY KEY,
                         url TEXT,
                         title TEXT,
@@ -66,24 +56,67 @@ class SQLiteDB:
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     );'''
-            if self.conn is not None:
                 self.conn.execute(sql)
                 self.conn.commit()
-            else:
-                print("No database connection. Table creation skipped.")
         except Error as e:
             print(f"Error creating table: {e}")
 
-    def insert_product_data(self, product_data: dict) -> bool:
-        """Insert product data into the products table
 
+class ProductsCRUD:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.conn: sqlite3.Connection = connection
+        # TODO: Get database name from database connection
+    ######## *** CRUD 'products' operations *** ######
+    def list_products(self) -> list:
+        """List all products in the database
+        Returns:
+            list: A list of all products
+        """
+        products = []
+        try:
+            if not self.conn:
+                logger.error(f'Error: Cannot connect to "{self}"')
+                return products
+            cur = self.conn.cursor()
+            sql = f"""SELECT * FROM products"""
+            cur.execute(sql)
+            products = cur.fetchall()
+            self.conn.commit()
+            cur.close()
+        except Exception as e:
+            logger.error(f'Cannot list products from products table: {e.__str__()}')
+        return products
+
+    def get_product(self, product_id: int) -> set:
+        """Get product by product_id
+        Args:
+            product_id (int): _description_
+        Returns:
+            set: _description_
+        """
+        try:
+            product_data = set()
+            if not self.conn:
+                logger.error(f'Error: Cannot connect to sqldb')
+                return product_data
+            cur = self.conn.cursor()
+            sql = f"""SELECT * FROM products WHERE id={product_id}"""
+            cur.execute(sql)
+            product_data = cur.fetchone()
+            self.conn.commit()
+            cur.close()
+        except Exception as e:
+            logger.error(f'Cannot get product data from products table: {e.__str__()}')
+        return product_data
+
+    def insert_product(self, product_data: dict) -> bool:
+        """Insert product data into the products table
         Returns:
             bool: _description_
         """
         try:
-            
             if not self.conn:
-                logger.error(f'Error: Cannot connect to "{self.db_file}"')
+                logger.error(f'Error: Cannot connect to sqldb')
                 return False
             cur = self.conn.cursor()
             sql = f"""INSERT INTO products (
@@ -102,25 +135,23 @@ class SQLiteDB:
                 f"{current_timestamp()}"
             ))
             self.conn.commit()
+            cur.close()
             return True
         except Exception as e:
-            logger.error('Cannot insert product data into products table')
+            logger.error(f'Cannot insert product data into products table: {e.__str__()}')
             return False
     
-    def update_product_data(self, product_data: dict, product_id: int) -> bool:
-        """Update products table using product_data
-
+    def update_product(self, product_data: dict, product_id: int) -> bool:
+        """Update products table using product_id
         Args:
             product_data (dict): _description_
             product_id (int): _description_
-
         Returns:
             bool: _description_
         """
         try:
-            
             if not self.conn:
-                logger.error(f'Error: Cannot connect to "{self.db_file}"')
+                logger.error(f'Error: Cannot connect to sqldb')
                 return False
             cur = self.conn.cursor()
             sql = f'SELECT * FROM products WHERE id={product_id}'
@@ -147,7 +178,31 @@ class SQLiteDB:
                 f"{current_timestamp()}",
             ))
             self.conn.commit()
+            cur.close()
             return True
         except Exception as e:
-            logger.error(f'Cannot update product data for "{self.db_file}": {e.__str__()}')
+            logger.error(f'Cannot update product data: {e.__str__()}')
             return False
+
+    def delete_product(self, product_id: int) -> bool:
+        """Delete product row from products table using product_id
+        Args:
+            product_id (int): _description_
+        Returns:
+            bool: _description_
+        """
+        try:
+            if not self.conn:
+                logger.error(f'Error: Cannot connect to sqldb')
+                return False
+            cur = self.conn.cursor()
+            sql = f'''DELETE FROM products WHERE id={product_id}'''
+            cur.execute(sql)
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f'Error in delete product ({product_id}): {e.__str__()}')
+            return False
+    ######## *** CRUD 'products' operations *** ######
+    
+    
