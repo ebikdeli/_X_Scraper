@@ -17,7 +17,7 @@ class SQLiteDBInit:
             db_file (str): The filename for the SQLite database. Defaults to 'scraped_data.db'.
         """
         self.db_file: str = db_file
-        self.conn: Optional[sqlite3.Connection] = self.create_connection()
+        self.connection: Optional[sqlite3.Connection] = self.create_connection()
         self.create_product_table()
 
     def create_connection(self) -> Optional[sqlite3.Connection]:
@@ -42,7 +42,7 @@ class SQLiteDBInit:
             None
         """
         try:
-            if self.conn is not None:
+            if self.connection is not None:
                 sql = '''CREATE TABLE IF NOT EXISTS products (
                         id INTEGER PRIMARY KEY,
                         url TEXT,
@@ -56,8 +56,8 @@ class SQLiteDBInit:
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     );'''
-                self.conn.execute(sql)
-                self.conn.commit()
+                self.connection.execute(sql)
+                self.connection.commit()
         except Error as e:
             print(f"Error creating table: {e}")
 

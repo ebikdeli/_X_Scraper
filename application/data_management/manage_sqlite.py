@@ -2,25 +2,28 @@
 Insert or Update product data extracted from e-commerce websites into SQLite database
 """
 
-from application.database.sqlite import SQLiteDB
+from application.database.sqlite import SQLiteDBInit, ProductsCRUD
 from application.extractor.extract import Extractor
 from logger.logger import setup_logger
+import sqlite3
 
 
 logger = setup_logger(__name__)
 
 
-def insert_product_data(product_data: dict) -> bool:
+def insert_product_data(product_data: dict, db_connection: sqlite3.Connection|None=None) -> bool:
     """
     Insert product data into the SQLite database. Return True if successful.
     Args:
         product_data (dict): Dictionary containing product details.
     """
-    db = SQLiteDB()
-    conn = db.create_connection()
-    if conn is None:
-        logger.error("Failed to create database connection.")
-        return False
+    conn = db_connection
+    if not conn:
+        db = SQLiteDBInit()
+        conn = db.connection
+        if conn is None:
+            logger.error("Failed to create database connection.")
+            return False
     cur = conn.cursor()
     try:
         # Assuming product_data contains a unique 'product_id'
@@ -60,7 +63,7 @@ def insert_product_data(product_data: dict) -> bool:
             logger.info(f"Inserted product {product_data['product_id']}")
             return True
     except Exception as e:
-        logger.error(f"Error upserting product data: {e}")
+        logger.error(f"Error extract and inserting product data into products: {e}")
     return False
 
 
