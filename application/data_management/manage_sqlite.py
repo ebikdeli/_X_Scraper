@@ -25,14 +25,16 @@ def upsert_product_data(product_data: dict, db_connection: sqlite3.Connection|No
             if conn is None:
                 logger.error("Failed to create database connection.")
                 return False
+        pd = ProductsCRUD(conn)
         if update:
-            # TODO update product data
-            pass
+            product_set: set = pd.get_product(url=product_data['url'])
+            if product_set:
+                if pd.update_product(product_data, product_set[1]): # pyright: ignore[reportIndexIssue]
+                    logger.info(f'product_id({product_set[0]}) updated') # pyright: ignore[reportIndexIssue]
         else:
             # Insert new record into products
-            pd = ProductsCRUD(conn)
             if pd.insert_product(product_data):
-                logger.info(f"Inserted product: {product_data}")
+                logger.info(f"Inserted new product: {product_data}")
                 return True
         logger.warning(f"Failed to insert product: {product_data}")
     except Exception as e:

@@ -87,8 +87,8 @@ class ProductsCRUD:
             logger.error(f'Cannot list products from products table: {e.__str__()}')
         return products
 
-    def get_product(self, product_id: int) -> set:
-        """Get product by product_id
+    def get_product(self, product_id: int=0, url: str='') -> set:
+        """Get product by product_id or url. If not found product or run into any problem return empty set
         Args:
             product_id (int): _description_
         Returns:
@@ -99,8 +99,14 @@ class ProductsCRUD:
             if not self.conn:
                 logger.error(f'Error: Cannot connect to sqldb')
                 return product_data
+            if not (product_id or url):
+                logger.error(f'Error: product_id or url does not provided')
+                return product_data
             cur = self.conn.cursor()
-            sql = f"""SELECT * FROM products WHERE id={product_id}"""
+            if product_id:
+                sql = f"""SELECT * FROM products WHERE id={product_id}"""
+            elif url:
+                sql = f"""SELECT * FROM products WHERE url={url}"""
             cur.execute(sql)
             product_data = cur.fetchone()
             self.conn.commit()
