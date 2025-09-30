@@ -89,32 +89,3 @@ class AsyncRobotsTxtParser:
         if user_agent in self.user_agents:
             return {k: list(v) for k, v in self.user_agents[user_agent].items()}
         return None
-
-# Example Usage
-async def main():
-    website_url = "https://www.google.com"  # Replace with any website
-    parser = AsyncRobotsTxtParser(website_url)
-    await parser.fetch()
-
-    # Print rules for all user-agents
-    print(f"Rules for {website_url}:")
-    for ua, rules in parser.user_agents.items():
-        print(f"\nUser-agent: {ua}")
-        print(f"  Allow: {rules['allow']}")
-        print(f"  Disallow: {rules['disallow']}")
-
-    # Test path permissions
-    test_cases = [
-        ("Googlebot", "/search"),
-        ("*", "/admin"),
-        ("Bingbot", "/images/logo.jpg"),
-    ]
-    for ua, path in test_cases:
-        is_allowed = await parser.is_allowed(ua, path)
-        print(f"\nCan '{ua}' access '{path}'? {'Yes' if is_allowed else 'No'}")
-
-    # Print sitemaps
-    print("\nSitemaps:", await parser.get_sitemaps())
-
-if __name__ == "__main__":
-    asyncio.run(main())
