@@ -21,5 +21,8 @@ AMAZON_URLS = [
 RABBITMQ_URL = "amqp://guest:guest@localhost:5672/"
 QUEUE_NAME = "amazon_scrape_queue"
 
-# Method to used (requests or selenium)
+# Default ethod to used (requests or selenium)
 METHOD = 'selenium'
+
+# While using selenium, Reuse current driver for the next webpage.
+REUSE_DRIVER = True

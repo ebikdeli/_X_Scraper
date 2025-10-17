@@ -9,6 +9,7 @@ from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from typing import Optional, Any
 from application.driver.chrome import setup_driver
+from application.data_management.manage_sqlite import upsert_product_data
 import requests
 import config
 from bs4 import BeautifulSoup, Tag
@@ -20,8 +21,10 @@ logger = setup_logger('__name__')
 
 
 class Extractor:
-    """A class to extract product data from e-commerce websites."""
+    """A class to extract product data from e-commerce websites.\n
+    Every methods that scrape a single attribute can be called with arbitrary scraping method (For eg, we can scrape title with selenium and image using Beautiful soup. But beware because it could have additional proccessing overhead).\n"""
     def __init__(self, product_url: str, method: str=config.METHOD, driver: WebDriver|None=None, soup: BeautifulSoup|None=None):
+        # Initialize product attributes with default values one by one    
         self.product_url = product_url
         self.product_title: str = 'N/A'
         self.product_price: float = 0.0
@@ -64,7 +67,8 @@ class Extractor:
             elif config.METHOD == "requests":
                 if not self._initialize_soup():
                     return {'status': 'error', 'msg': 'RequestException occurred', 'data': self.product_data}
-            # Extract product data using Selenium
+            
+            # Extract product data using method
             self.product_data = {
                 "url": self.product_url,
                 "name": self._get_generic_field_value('title', '', css_selector='.product_title'),
@@ -74,9 +78,21 @@ class Extractor:
                 "company_name": self._get_generic_field_value('company_name', '', css_selector='.brand, .manufacturer'),
                 "category": self._get_generic_field_value('category', '', css_selector='.posted_in a'),
             }
+            # ***
+            # * Data handling could be done here. But in the Dev phase we pass this for now
+            # ***
+            
+            # Insert-upadte product data into database
+            result: bool = upsert_product_data(product_data=self.product_data)
+            if not result:
+                print('No product inserted into/updated from product table')
+            else:
+                print('Product data inserted/updated into product table')
+            # Do not reuse current selenium driver
+            if config.METHOD == 'selenium' and not config.REUSE_DRIVER:
+                self._close_driver()
         except Exception:
-            if self.driver:
-                self.driver.quit()
+            self._close_driver()
         return self.product_data
 
     def _initialize_driver(self) -> bool:
@@ -108,6 +124,14 @@ class Extractor:
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
         return False
+    
+    def _close_driver(self) -> None:
+        """Close selenium driver if exists"""
+        try:
+            if self.driver:
+                self.driver.quit()
+        except Exception:
+            pass
     
     def _check_method(self, method: Optional[str] = None) -> str| None:
         """Checks and returns the extraction method to be used. If neither soup nor driver is available, or invalid method chosen, it logs an error."""

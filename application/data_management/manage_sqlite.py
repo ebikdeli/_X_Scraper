@@ -1,5 +1,5 @@
 """
-Insert or Update product data extracted from e-commerce websites into SQLite database
+Insert or Update product data extracted from e-commerce websites into SQLite database.
 """
 
 from application.database.sqlite import SQLiteDBInit, ProductsCRUD
