@@ -67,8 +67,10 @@ class Extractor:
             elif config.METHOD == "requests":
                 if not self._initialize_soup():
                     return {'status': 'error', 'msg': 'RequestException occurred', 'data': self.product_data}
-            
+            logger.info(f'Product url to be extracted:\n{self.product_url}')
+            print(f'Product url to be extracted:\n{self.product_url}')
             # Extract product data using method
+            # ! MUST WORK A LOT ON IT
             self.product_data = {
                 "url": self.product_url,
                 "name": self._get_generic_field_value('title', '', css_selector='.product_title'),
@@ -78,6 +80,8 @@ class Extractor:
                 "company_name": self._get_generic_field_value('company_name', '', css_selector='.brand, .manufacturer'),
                 "category": self._get_generic_field_value('category', '', css_selector='.posted_in a'),
             }
+            print(f'AFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
+            
             # ***
             # * Data handling could be done here. But in the Dev phase we pass this for now
             # ***
@@ -192,6 +196,7 @@ class Extractor:
     def _get_generic_field_value(self, field_name: str, default_return_value: Any, css_selector: str='', xpath: str='', multi_value: bool=False, method: Optional[str] = None) -> str:
         """Extracts the value of the field_name of the product from the BeautifulSoup object or Selenium driver."""
         try:
+            print(f'try to extract data for "{field_name}" field...')
             if method:
                 chosen_method = self._check_method(method)
                 if not chosen_method:

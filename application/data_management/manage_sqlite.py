@@ -3,7 +3,6 @@ Insert or Update product data extracted from e-commerce websites into SQLite dat
 """
 
 from application.database.sqlite import SQLiteDBInit, ProductsCRUD
-from application.extractor.extract import Extractor
 from logger.logger import setup_logger
 import sqlite3
 
@@ -42,15 +41,15 @@ def upsert_product_data(product_data: dict, db_connection: sqlite3.Connection|No
     return False
 
 
-def extract_and_upsert(url: str):
+def extract_and_upsert(product_data: dict[str, object]) -> bool:
     """
     Extract product data from a URL and insert into the database.
     Args:
         url (str): Product page URL.
     """
-    extractor = Extractor(url)
-    product_data = extractor.extract()
     if product_data:
         upsert_product_data(product_data)
+        return True
     else:
-        logger.warning(f"No product data extracted from {url}")
+        logger.warning(f"No product data extracted from {product_data['url']}")
+    return False

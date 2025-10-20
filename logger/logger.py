@@ -7,7 +7,8 @@ def setup_logger(log_file="scraper.log"):
 
     logging.basicConfig(
         filename=os.path.join("logs", log_file),
-        level=logging.DEBUG,
+        # level=logging.DEBUG,
+        level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s"
     )
     return logging.getLogger(__name__)
