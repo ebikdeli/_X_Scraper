@@ -85,6 +85,7 @@ class ProductsCRUD:
             cur.close()
         except Exception as e:
             logger.error(f'Cannot list products from products table: {e.__str__()}')
+            print(f'Cannot list products from products table: {e.__str__()}')
         return products
 
     def get_product(self, product_id: int=0, url: str='') -> set:
@@ -113,6 +114,7 @@ class ProductsCRUD:
             cur.close()
         except Exception as e:
             logger.error(f'Cannot get product data from products table: {e.__str__()}')
+            print(f'\nCannot get product data from products table: {e.__str__()}')
         return product_data
 
     def insert_product(self, product_data: dict) -> bool:
@@ -126,16 +128,15 @@ class ProductsCRUD:
                 return False
             cur = self.conn.cursor()
             sql = f"""INSERT INTO products (
-                url, title, price, description, images, name, company_name, created_at, updated_at
+                url, title, price, description, images, company_name, created_at, updated_at
                 )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);"""
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?);"""
             cur.execute(sql, (
                 f"{product_data['url']}",
                 f"{product_data['title']}",
                 product_data['price'],
                 f"{product_data['description']}",
                 f"{product_data['images']}",
-                f"{product_data['name']}",
                 f"{product_data['company_name']}",
                 f"{current_timestamp()}",
                 f"{current_timestamp()}"
@@ -145,6 +146,7 @@ class ProductsCRUD:
             return True
         except Exception as e:
             logger.error(f'Cannot insert product data into products table: {e.__str__()}')
+            print(f'Cannot insert product data into products table: {e.__str__()}')
             return False
     
     def update_product(self, product_data: dict, product_id: int) -> bool:
@@ -169,7 +171,6 @@ class ProductsCRUD:
                 price = ?,
                 description = ?,
                 images = ?,
-                name = ?,
                 company_name = ?,
                 updated_at = ?
                 WHERE id = {product_id};"""
@@ -179,7 +180,6 @@ class ProductsCRUD:
                 product_data['price'],
                 f"{product_data['description']}",
                 f"{product_data['images']}",
-                f"{product_data['name']}",
                 f"{product_data['company_name']}",
                 f"{current_timestamp()}",
             ))
@@ -188,6 +188,7 @@ class ProductsCRUD:
             return True
         except Exception as e:
             logger.error(f'Cannot update product data: {e.__str__()}')
+            print(f'Cannot update product data: {e.__str__()}')
             return False
 
     def delete_product(self, product_id: int) -> bool:
@@ -208,7 +209,6 @@ class ProductsCRUD:
             return True
         except Exception as e:
             logger.error(f'Error in delete product ({product_id}): {e.__str__()}')
+            print(f'Error in delete product ({product_id}): {e.__str__()}')
             return False
     ######## *** CRUD 'products' operations *** ######
-    
-    

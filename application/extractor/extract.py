@@ -68,26 +68,26 @@ class Extractor:
                 if not self._initialize_soup():
                     return {'status': 'error', 'msg': 'RequestException occurred', 'data': self.product_data}
             logger.info(f'Product url to be extracted:\n{self.product_url}')
-            print(f'Product url to be extracted:\n{self.product_url}')
+            print(f'\nProduct url to be extracted:\n{self.product_url}')
             # Extract product data using method
             # ! MUST WORK A LOT ON IT
             self.product_data = {
                 "url": self.product_url,
-                "name": self._get_generic_field_value('title', '', css_selector='.product_title'),
+                "title": self._get_generic_field_value('title', '', css_selector='.product_title'),
                 "price": self._get_generic_field_value('price', 0, css_selector='.woocommerce-Price-amount'),
                 "description": self._get_generic_field_value('description', '', css_selector='.woocommerce-product-details__short-description'),
                 "images": self._get_generic_field_value('images', [], css_selector='.woocommerce-product-gallery__image img', multi_value=True),
                 "company_name": self._get_generic_field_value('company_name', '', css_selector='.brand, .manufacturer'),
                 "category": self._get_generic_field_value('category', '', css_selector='.posted_in a'),
             }
-            print(f'AFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
+            print(f'\nAFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
             
             # ***
             # * Data handling could be done here. But in the Dev phase we pass this for now
             # ***
             
             # Insert-upadte product data into database
-            result: bool = upsert_product_data(product_data=self.product_data)
+            result: bool = upsert_product_data(product_data=self.product_data, update=True)
             if not result:
                 print('No product inserted into/updated from product table')
             else:
