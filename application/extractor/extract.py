@@ -87,7 +87,7 @@ class Extractor:
             # ***
             
             # Insert-upadte product data into database
-            result: bool = upsert_product_data(product_data=self.product_data, update=True)
+            result: bool = upsert_product_data(product_data=self.product_data)
             if not result:
                 print('No product inserted into/updated from product table')
             else:
