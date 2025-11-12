@@ -17,7 +17,7 @@ import time
 from logger.logger import setup_logger
 
 
-logger = setup_logger('__name__')
+logger = setup_logger('scraper.log', __name__)
 
 
 class Extractor:
@@ -68,7 +68,6 @@ class Extractor:
                 if not self._initialize_soup():
                     return {'status': 'error', 'msg': 'RequestException occurred', 'data': self.product_data}
             logger.info(f'Product url to be extracted:\n{self.product_url}')
-            print(f'\nProduct url to be extracted:\n{self.product_url}')
             # Extract product data using method
             # ! MUST WORK A LOT ON IT
             self.product_data = {
@@ -80,7 +79,7 @@ class Extractor:
                 "company_name": self._get_generic_field_value('company_name', '', css_selector='.brand, .manufacturer'),
                 "category": self._get_generic_field_value('category', '', css_selector='.posted_in a'),
             }
-            print(f'\nAFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
+            logger.debug(f'\nAFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
             
             # ***
             # * Data handling could be done here. But in the Dev phase we pass this for now
@@ -89,9 +88,9 @@ class Extractor:
             # Insert-upadte product data into database
             result: bool = upsert_product_data(product_data=self.product_data)
             if not result:
-                print('No product inserted into/updated from product table')
+                logger.warning('No product inserted into/updated from product table')
             else:
-                print('Product data inserted/updated into product table')
+                logger.warning('Product data inserted/updated into product table')
             # Do not reuse current selenium driver
             if config.METHOD == 'selenium' and not config.REUSE_DRIVER:
                 self._close_driver()
@@ -196,7 +195,7 @@ class Extractor:
     def _get_generic_field_value(self, field_name: str, default_return_value: Any, css_selector: str='', xpath: str='', multi_value: bool=False, method: Optional[str] = None) -> str:
         """Extracts the value of the field_name of the product from the BeautifulSoup object or Selenium driver."""
         try:
-            print(f'try to extract data for "{field_name}" field...')
+            logger.info(f'try to extract data for "{field_name}" field...')
             if method:
                 chosen_method = self._check_method(method)
                 if not chosen_method:

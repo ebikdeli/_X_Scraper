@@ -2,7 +2,8 @@ import concurrent.futures
 from logger.logger import setup_logger
 from application.extractor.extract import Extractor
 
-logger = setup_logger('__name__')
+# logger = setup_logger('scraper.log', __name__)
+logger = setup_logger('scraper.log', '_main')
 
 urls = [
     "https://example-woocommerce-site.com/product/sample-product-1",
@@ -11,14 +12,14 @@ urls = [
 
 
 def scrape_and_store(urls: str|list[str]|tuple[str]|set[str]) -> None:
-    """Start scraping data from url"""
+    """Start scraping data from url(s)"""
     product_extracted: int = 0
-    logger.info(f"Scraping URL: {urls}")
     if not urls:
         logger.warning('No product url found')
     elif isinstance(urls, str):
         url = urls.strip().replace('\n', '').replace('\t', '')
         url = "".join(url.split())
+        logger.info(f"Scraping URL: {url}")
         extractor = Extractor(url)
         product = extractor.extract()
         product_extracted += 1
@@ -27,13 +28,14 @@ def scrape_and_store(urls: str|list[str]|tuple[str]|set[str]) -> None:
             if isinstance(url, str):
                 url = url.strip().replace('\n', '').replace('\t', '')
                 url = "".join(url.split())
+                logger.info(f"Scraping URL: {url}")
                 extractor = Extractor(product_url=url)
                 product = extractor.extract()
                 product_extracted += 1
     if "error" not in product:
-        logger.info(f"Inserted data for: {urls}")
+        logger.info(f"Data inserted-updated for the URL(s) successfully")
     else:
-        logger.error(f"Failed to scrape {urls}: {product['error']}")
+        logger.error(f"Failed to scrape data for the URL(s)")
 
 
 def main():

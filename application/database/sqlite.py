@@ -5,7 +5,7 @@ from logger.logger import setup_logger
 from ._resources import current_timestamp
 
 
-logger = setup_logger(__name__)
+logger = setup_logger('scraper.log', __name__)
 
 
 class SQLiteDBInit:
@@ -30,7 +30,7 @@ class SQLiteDBInit:
             conn = sqlite3.connect(self.db_file)
             return conn
         except Error as e:
-            print(f"Database connection error: {e}")
+            logger.info(f"Database connection error: {e}")
             return None
 
     def create_product_table(self) -> None:
@@ -59,7 +59,7 @@ class SQLiteDBInit:
                 self.connection.execute(sql)
                 self.connection.commit()
         except Error as e:
-            print(f"Error creating table: {e}")
+            logger.info(f"Error creating table: {e}")
 
 
 class ProductsCRUD:
@@ -85,7 +85,7 @@ class ProductsCRUD:
             cur.close()
         except Exception as e:
             logger.error(f'Cannot list products from products table: {e.__str__()}')
-            print(f'Cannot list products from products table: {e.__str__()}')
+            logger.info(f'Cannot list products from products table: {e.__str__()}')
         return products
 
     def get_product(self, product_id: int=0, url: str='') -> set:
@@ -114,7 +114,6 @@ class ProductsCRUD:
             cur.close()
         except Exception as e:
             logger.error(f'Cannot get product data from products table: {e.__str__()}')
-            print(f'\nCannot get product data from products table: {e.__str__()}')
         return product_data
 
     def insert_product(self, product_data: dict) -> bool:
@@ -146,7 +145,6 @@ class ProductsCRUD:
             return True
         except Exception as e:
             logger.error(f'Cannot insert product data into products table: {e.__str__()}')
-            print(f'Cannot insert product data into products table: {e.__str__()}')
             return False
     
     def update_product(self, product_data: dict, product_id: int) -> bool:
@@ -188,7 +186,6 @@ class ProductsCRUD:
             return True
         except Exception as e:
             logger.error(f'Cannot update product data: {e.__str__()}')
-            print(f'Cannot update product data: {e.__str__()}')
             return False
 
     def delete_product(self, product_id: int) -> bool:
@@ -209,6 +206,5 @@ class ProductsCRUD:
             return True
         except Exception as e:
             logger.error(f'Error in delete product ({product_id}): {e.__str__()}')
-            print(f'Error in delete product ({product_id}): {e.__str__()}')
             return False
     ######## *** CRUD 'products' operations *** ######
