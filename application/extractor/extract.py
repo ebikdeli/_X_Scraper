@@ -10,11 +10,14 @@ from selenium.webdriver.common.by import By
 from typing import Optional, Any
 from application.driver.chrome import setup_driver
 from application.data_management.manage_sqlite import upsert_product_data
+from ._resources import to_english_digits
 import requests
+from requests import Response
 import config
 from bs4 import BeautifulSoup, Tag
 import time
 from logger.logger import setup_logger
+import json
 
 
 logger = setup_logger('scraper.log', __name__)
@@ -23,7 +26,7 @@ logger = setup_logger('scraper.log', __name__)
 class Extractor:
     """A class to extract product data from e-commerce websites.\n
     Every methods that scrape a single attribute can be called with arbitrary scraping method (For eg, we can scrape title with selenium and image using Beautiful soup. But beware because it could have additional proccessing overhead).\n"""
-    def __init__(self, product_url: str, method: str=config.METHOD, driver: WebDriver|None=None, soup: BeautifulSoup|None=None):
+    def __init__(self, product_url: str, method: str=config.METHOD, driver: WebDriver|None=None, requests_response: Response|None=None, soup: BeautifulSoup|None=None):
         # Initialize product attributes with default values one by one    
         self.product_url = product_url
         self.product_title: str = 'N/A'
@@ -33,8 +36,6 @@ class Extractor:
         self.product_name: str = 'N/A'
         self.company_name: str = 'N/A'
         self.categories: list = []
-        self.driver: Optional[WebDriver] = None
-        self.soup: Optional[BeautifulSoup] = None
         self.product_data: dict = {
             "url": self.product_url,
             "title": self.product_title,
@@ -45,13 +46,15 @@ class Extractor:
             "company_name": self.company_name,
             "category": self.categories
         }
-        self.driver = driver
+        self.driver: Optional[WebDriver] = driver
+        self.requests_response: Optional[requests.Response] = requests_response
+        self.html_body: str = ''
         self.soup = soup
         self.method = method
 
-    def extract(self) -> dict:
+    def scrape(self) -> dict:
         """
-        Extracts product data from a given e-commerce product URL.
+        Scraps and extract product data from a given e-commerce product URL.
 
         Args:
             url (str): The product page URL.
@@ -68,8 +71,10 @@ class Extractor:
                 if not self._initialize_soup():
                     return {'status': 'error', 'msg': 'RequestException occurred', 'data': self.product_data}
             logger.info(f'Product url to be extracted:\n{self.product_url}')
-            # Extract product data using method
-            # ! MUST WORK A LOT ON IT
+            # ? Extract product data using diffrent methods
+            # * 1- Extract data using "script-json+ld tag"
+            pass
+            # * 2- Extract data using "generic field value"
             self.product_data = {
                 "url": self.product_url,
                 "title": self._get_generic_field_value('title', '', css_selector='.product_title'),
@@ -80,12 +85,9 @@ class Extractor:
                 "category": self._get_generic_field_value('category', '', css_selector='.posted_in a'),
             }
             logger.debug(f'\nAFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
-            
-            # ***
-            # * Data handling could be done here. But in the Dev phase we pass this for now
-            # ***
-            
-            # Insert-upadte product data into database
+            # * 3- If any Product data field could not be found in previous methods try to scrape data using single fields
+            pass
+            # ? Insert-upadte product data into database
             result: bool = upsert_product_data(product_data=self.product_data)
             if not result:
                 logger.warning('No product inserted into/updated from product table')
@@ -105,6 +107,7 @@ class Extractor:
         try:
             self.driver.get(self.product_url)
             time.sleep(3)  # Let JavaScript render
+            self.html_body = self.driver.page_source
             return True
         except WebDriverException as e:
             logger.error(f"WebDriverException: {e}")
@@ -114,19 +117,36 @@ class Extractor:
             self.driver.quit()
         return False
     
-    def _initialize_soup(self) -> bool:
-        """Initializes the BeautifulSoup object if not already done. If initialization fails, it returns False."""
+    def _initialize_requests(self) -> bool:
+        """Initializes the requests response if not already done. If initialization fails, it returns False."""
         try:
             response = requests.get(self.product_url)
             response.raise_for_status()
-            if not self.soup:
-                self.soup = BeautifulSoup(response.text, "html.parser")
+            self.requests_response = response
+            self.html_body = response.text
             return True
         except requests.RequestException as e:
             logger.error(f"RequestException: {e}")
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
         return False
+    
+    def _initialize_soup(self) -> bool:
+        """Initializes the BeautifulSoup object if not already done. If initialization fails, it returns False."""
+        try:
+            if not self.soup:
+                self.soup = BeautifulSoup(self.html_body, "html.parser")
+            return True
+        except requests.RequestException as e:
+            logger.error(f"RequestException: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+        return False
+    
+    def _call_driver_insteadof_requests(self):
+        """If requests could not call website well use driver instead
+        """
+        pass
     
     def _close_driver(self) -> None:
         """Close selenium driver if exists"""
@@ -192,6 +212,51 @@ class Extractor:
             data.update({'status': 'nok', 'msg': f'Error: cannot extract {field_name}'})
         return data
     
+    def _scrape_json_ld(self) -> dict|None:
+        """Extract product data from JSON-LD script tags
+
+        Returns:
+            dict|None: Returns dict if data found in the 'ld+script' script tag. If no data found or error happened returns None.
+        """
+        try:
+            json_ld_data = {}
+            if self.soup:
+                scripts = self.soup.find_all('script', type='application/ld+json')
+                # print(scripts)
+                if not scripts:
+                    logger.warning('No application/ld+json script found')
+                    return
+                for script in scripts:
+                    try:
+                        json_content = script.text
+                        if not json_content:
+                            logger.warning('No json content found in the script')
+                            return
+                        # print (json_content)
+                        if json_content:
+                            data = json.loads(json_content)
+                            # print(type(data))
+                            # print(data)
+                            if isinstance(data, list):
+                                for item in data:
+                                    if item.get('@type') == 'Product':
+                                        json_ld_data = item
+                                        # break
+                            elif data.get('@type') == 'Product':
+                                json_ld_data = data
+                                # break
+                            return json_ld_data
+                    except Exception as e:
+                        logger.error(f'Error parsing JSON-LD script: {e.__str__()}')
+        except Exception as e:
+            logger.error(f'Error in extracting data from JSON-LD: {e.__str__()}')
+        return
+
+    def _extract_json_ld_data(self, json_ld_data:dict) -> None:
+        """Extract json+ld script tag data that scrapped from _scrape_json_ld_data method
+        """
+        pass
+    
     def _get_generic_field_value(self, field_name: str, default_return_value: Any, css_selector: str='', xpath: str='', multi_value: bool=False, method: Optional[str] = None) -> str:
         """Extracts the value of the field_name of the product from the BeautifulSoup object or Selenium driver."""
         try:
@@ -211,7 +276,7 @@ class Extractor:
             return field_value_list if field_value_list else default_return_value
         return field_value_list[0] if field_value_list else default_return_value
     
-    def get_product_name_value(self):
+    def find_name_title(self):
         """Get product name value manually
         """
         try:

@@ -21,7 +21,7 @@ def scrape_and_store(urls: str|list[str]|tuple[str]|set[str]) -> None:
         url = "".join(url.split())
         logger.info(f"Scraping URL: {url}")
         extractor = Extractor(url)
-        product = extractor.extract()
+        product = extractor.scrape()
         product_extracted += 1
     elif isinstance(urls, list) or isinstance(urls, tuple) or isinstance(urls, set):
         for url in urls:
@@ -30,7 +30,7 @@ def scrape_and_store(urls: str|list[str]|tuple[str]|set[str]) -> None:
                 url = "".join(url.split())
                 logger.info(f"Scraping URL: {url}")
                 extractor = Extractor(product_url=url)
-                product = extractor.extract()
+                product = extractor.scrape()
                 product_extracted += 1
     if "error" not in product:
         logger.info(f"Data inserted-updated for the URL(s) successfully")
@@ -39,8 +39,7 @@ def scrape_and_store(urls: str|list[str]|tuple[str]|set[str]) -> None:
 
 
 def main():
-    product_url = """https://datkala.com/product/
-    %d9%84%d9%be-%d8%aa%d8%a7%d9%be-%d9%84%d9%86%d9%88%d9%88-15-6-%d8%a7%db%8c%d9%86%da%86%db%8c-%d9%85%d8%af%d9%84-loq-i7-14700hx-32gb-512gb-rtx-5060/"""
+    product_url = """https://datkala.com/product/%d9%84%d9%be-%d8%aa%d8%a7%d9%be-%d9%84%d9%86%d9%88%d9%88-15-6-%d8%a7%db%8c%d9%86%da%86%db%8c-%d9%85%d8%af%d9%84-loq-i7-14700hx-32gb-512gb-rtx-5060/"""
     scrape_and_store(product_url)
 
 
