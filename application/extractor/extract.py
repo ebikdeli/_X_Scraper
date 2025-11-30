@@ -100,6 +100,8 @@ class Extractor:
             self._close_driver()
         return self.product_data
 
+    # ! Following methods used to Extraction object initialization
+
     def _initialize_driver(self) -> bool:
         """Initializes the Selenium WebDriver if not already done. If initialization fails, it returns False."""
         if not self.driver:
@@ -156,61 +158,7 @@ class Extractor:
         except Exception:
             pass
     
-    def _check_method(self, method: Optional[str] = None) -> str| None:
-        """Checks and returns the extraction method to be used. If neither soup nor driver is available, or invalid method chosen, it logs an error."""
-        if not self.soup and not self.driver:
-            logger.error("Either soup or driver must be provided")
-            return
-        if not method and self.method:
-            method = self.method
-        # Determine the method to use for title extraction
-        chosen_method: str = method if isinstance(method, str) and method else getattr(config, "METHOD", "requests")
-        # Validate the chosen method
-        if chosen_method not in ["selenium", "requests"]:
-            logger.error(f"Invalid method specified: {chosen_method}. Use 'selenium' or 'requests'.")
-            return
-        return chosen_method
-
-    def _find_product_field_data(self, field_name: str, css_selector: str='', xpath: str='', method: Optional[str] = None) -> dict:
-        """Extracts product data based on the specified method (requests or selenium).
-        field_name: The name of the field to extract (e.g., title, price, description).
-        css_selctor: The CSS selector to use for extraction.(only for selenium)"""
-        try:
-            chosen_method = self._check_method(method)
-            if not chosen_method:
-                raise ValueError("Invalid method specified or neither soup nor driver is available.")
-            data: dict = {f'{field_name}': [], 'status': '', 'msg': '', 'method': chosen_method}
-            # Extract data based on driver
-            if chosen_method == "selenium" and self.driver:
-                if css_selector:
-                    elements = self.driver.find_elements(By.CSS_SELECTOR, css_selector)
-                elif xpath:
-                    elements = self.driver.find_elements(By.XPATH, xpath)
-                else:
-                    raise ValueError("Either css_selctor or xpath must be provided for Selenium method.")
-                # logger.debug(f"Extracting {field_name} using Selenium with css_selector: {css_selector} or xpath: {xpath}")
-                for elem in elements:
-                    if elem.text.strip():
-                        data[f'{field_name}'].append(elem.text.strip())
-            # Extract data based on soup
-            elif chosen_method == "requests" and self.soup:
-                if not css_selector:
-                    raise ValueError("css_selector must be provided for Requests method.")
-                tags = self.soup.select(f"{css_selector}")
-                for tag in tags:
-                    if tag.get_text(strip=True):
-                        data[f'{field_name}'].append(tag.get_text(strip=True))
-            else:
-                raise ValueError("Invalid method specified or neither soup nor driver is available.")
-            data.update({'status': 'ok', 'msg': f'Successfully extracted "{field_name}" field data using "{chosen_method}"'})
-            # print(f'EXTRACTED DATA: {data}')
-        except ValueError as ve:
-            logger.error(f"ValueError: {ve}")
-            data.update({'status': 'nok', 'msg': f'Error: {ve}'})
-        except Exception as e:
-            logger.error(f"Error extracting {field_name}: {e}")
-            data.update({'status': 'nok', 'msg': f'Error: cannot extract {field_name}'})
-        return data
+    # ! Following methods used to scrape data from web page
     
     def _scrape_json_ld(self) -> dict|None:
         """Extract product data from JSON-LD script tags
@@ -261,22 +209,39 @@ class Extractor:
         """Extracts the value of the field_name of the product from the BeautifulSoup object or Selenium driver."""
         try:
             logger.info(f'try to extract data for "{field_name}" field...')
-            if method:
-                chosen_method = self._check_method(method)
-                if not chosen_method:
-                    raise ValueError("Invalid method specified or neither soup nor driver is available.")
-            field_data: dict = self._find_product_field_data(field_name=field_name,css_selector=css_selector, xpath=xpath, method=method)
+            field_data: dict = self._find_product_field_data(field_name=field_name,css_selector=css_selector)
             # print(f'FIELD DATA: {field_data}')
             field_value_list = field_data.get(field_name, default_return_value)
-        except ValueError as ve:
-            logger.error(f"ValueError: {ve}")
         except Exception as e:
             logger.error(f"Error extracting {field_name}: {e}")
         if multi_value:
             return field_value_list if field_value_list else default_return_value
         return field_value_list[0] if field_value_list else default_return_value
     
-    def find_name_title(self):
+    def _find_product_field_data(self, field_name: str, css_selector: str='') -> dict:
+        """Scrape product data.
+        field_name: The name of the field to extract (e.g., title, price, description).
+        css_selctor: The CSS selector to use for scraping"""
+        try:
+            data: dict = {f'{field_name}': [], 'status': '', 'msg': ''}
+            if not css_selector:
+                raise ValueError("css_selector must be provided")
+            if not self.soup:
+                raise ValueError("BeautifulSoup must be provided")
+            tags = self.soup.select(f"{css_selector}")
+            for tag in tags:
+                if tag.get_text(strip=True):
+                    data[f'{field_name}'].append(tag.get_text(strip=True))
+            data.update({'status': 'ok', 'msg': f'Successfully extracted "{field_name}"'})
+        except ValueError as ve:
+            logger.error(f"ValueError: {ve}")
+            data.update({'status': 'nok', 'msg': f'Error: {ve}'})
+        except Exception as e:
+            logger.error(f"Error extracting {field_name}: {e}")
+            data.update({'status': 'nok', 'msg': f'Error: cannot extract {field_name}'})
+        return data
+    
+    def _find_name_title(self):
         """Get product name value manually
         """
         try:
