@@ -100,7 +100,7 @@ class Extractor:
             self._close_driver()
         return self.product_data
 
-    # ! Following methods used to Extraction object initialization
+    # ! Following methods used to initialize Extraction instance
 
     def _initialize_driver(self) -> bool:
         """Initializes the Selenium WebDriver if not already done. If initialization fails, it returns False."""
