@@ -18,6 +18,7 @@ from bs4 import BeautifulSoup, Tag
 import time
 from logger.logger import setup_logger
 import json
+import re
 
 
 logger = setup_logger('scraper.log', __name__)
@@ -200,10 +201,122 @@ class Extractor:
             logger.error(f'Error in extracting data from JSON-LD: {e.__str__()}')
         return
 
-    def _extract_json_ld_data(self, json_ld_data:dict) -> None:
-        """Extract json+ld script tag data that scrapped from _scrape_json_ld_data method
+    def _extract_json_ld_data(self, json_ld_data: dict) -> dict:
         """
-        pass
+        Extract structured product data from a JSON-LD Product dictionary.
+
+        Args:
+            json_ld_data (dict): The JSON-LD object returned from _scrape_json_ld() that
+                describes a Product (or related objects).
+
+        Returns:
+            dict: Normalized product data ready for database upsert. Keys returned:
+                - url (str)
+                - title (str)
+                - price (float)
+                - description (str)
+                - images (list[str])
+                - name (str)       # same as title where applicable
+                - company_name (str)
+                - category (list[str])  # list for consistency
+                - currency (str|None)
+                - availability (str|None)
+                - sku (str|None)
+                - mpn (str|None)
+                - rating (float|None)
+                - review_count (int|None)
+        """
+        result: dict = {
+            "url": self.product_url,
+            "title": self.product_title,
+            "price": 0.0,
+            "description": self.product_description,
+            "images": [],
+            "name": self.product_name,
+            "company_name": self.company_name,
+            "category": [],
+            "currency": None,
+            "availability": None,
+            "sku": None,
+            "mpn": None,
+            "rating": None,
+            "review_count": None
+        }
+        try:
+            if not json_ld_data or not isinstance(json_ld_data, dict):
+                return result
+            # title / name
+            title = json_ld_data.get("name") or json_ld_data.get("headline")
+            if title:
+                result["title"] = title
+                result["name"] = title
+            # description
+            desc = json_ld_data.get("description")
+            if desc:
+                result["description"] = desc
+            # images - can be string or list
+            imgs = json_ld_data.get("image")
+            if imgs:
+                if isinstance(imgs, str):
+                    result["images"] = [imgs]
+                elif isinstance(imgs, (list, tuple)):
+                    result["images"] = [str(i) for i in imgs if i]
+            # brand / company name
+            brand = json_ld_data.get("brand")
+            if isinstance(brand, dict):
+                result["company_name"] = brand.get("name") or result["company_name"]
+            elif isinstance(brand, str):
+                result["company_name"] = brand
+            # category - normalize to list
+            cat = json_ld_data.get("category")
+            if cat:
+                if isinstance(cat, str):
+                    result["category"] = [cat]
+                elif isinstance(cat, (list, tuple)):
+                    result["category"] = [str(c) for c in cat if c]
+            # identifiers
+            sku = json_ld_data.get("sku")
+            if sku:
+                result["sku"] = str(sku)
+            mpn = json_ld_data.get("mpn")
+            if mpn:
+                result["mpn"] = str(mpn)
+            # offers -> price, currency, availability
+            offers = json_ld_data.get("offers")
+            if offers:
+                offer = offers[0] if isinstance(offers, list) and offers else offers
+                if isinstance(offer, dict):
+                    price_raw = offer.get("price") or offer.get("priceSpecification", {}).get("price")
+                    currency = offer.get("priceCurrency") or offer.get("currency") or None
+                    availability = offer.get("availability") or None
+                    if price_raw is not None:
+                        price_str = str(price_raw)
+                        # convert any non-english digits
+                        price_str = to_english_digits(price_str)
+                        # remove non-digit/dot characters
+                        price_str = re.sub(r"[^\d\.]", "", price_str)
+                        try:
+                            result["price"] = float(price_str) if price_str else 0.0
+                        except Exception:
+                            result["price"] = 0.0
+                    result["currency"] = currency
+                    result["availability"] = availability
+            # aggregateRating
+            agg = json_ld_data.get("aggregateRating") or {}
+            if isinstance(agg, dict):
+                rating_value = agg.get("ratingValue")
+                review_count = agg.get("reviewCount")
+                try:
+                    result["rating"] = float(rating_value) if rating_value is not None else None
+                except Exception:
+                    result["rating"] = None
+                try:
+                    result["review_count"] = int(review_count) if review_count is not None else None
+                except Exception:
+                    result["review_count"] = None
+        except Exception as e:
+            logger.error(f"_extract_json_ld_data error: {e}")
+        return result
     
     def _get_generic_field_value(self, field_name: str, default_return_value: Any, css_selector: str='', xpath: str='', multi_value: bool=False, method: Optional[str] = None) -> str:
         """Extracts the value of the field_name of the product from the BeautifulSoup object or Selenium driver."""
