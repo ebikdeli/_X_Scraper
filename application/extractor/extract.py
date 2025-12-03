@@ -10,7 +10,7 @@ from selenium.webdriver.common.by import By
 from typing import Optional, Any
 from application.driver.chrome import setup_driver
 from application.data_management.manage_sqlite import upsert_product_data
-from ._resources import to_english_digits
+from ._resources import to_english_digits, subset_dict, clean_text
 import requests
 from requests import Response
 import config
@@ -28,7 +28,8 @@ class Extractor:
     """A class to extract product data from e-commerce websites.\n
     Every methods that scrape a single attribute can be called with arbitrary scraping method (For eg, we can scrape title with selenium and image using Beautiful soup. But beware because it could have additional proccessing overhead).\n"""
     def __init__(self, product_url: str, method: str=config.METHOD, driver: WebDriver|None=None, requests_response: Response|None=None, soup: BeautifulSoup|None=None):
-        # Initialize product attributes with default values one by one    
+        # Initialize product attributes with default values one by one
+        self.needed_fields: list = ['url', 'title', 'price', 'description', 'images', 'name', 'company_name', 'category']
         self.product_url = product_url
         self.product_title: str = 'N/A'
         self.product_price: float = 0.0
@@ -65,6 +66,7 @@ class Extractor:
                 images, name, company_name, category, and other standard product data.
         """
         try:
+            is_extracted_completed : bool = False
             if config.METHOD == "selenium":
                 if not self._initialize_driver():
                     return {'status': 'error', 'msg': 'WebDriverException occurred', 'data': self.product_data}
@@ -73,33 +75,46 @@ class Extractor:
                     return {'status': 'error', 'msg': 'RequestException occurred', 'data': self.product_data}
             logger.info(f'Product url to be extracted:\n{self.product_url}')
             # ? Extract product data using diffrent methods
-            # * 1- Extract data using "script-json+ld tag"
-            pass
-            # * 2- Extract data using "generic field value"
-            self.product_data = {
-                "url": self.product_url,
-                "title": self._get_generic_field_value('title', '', css_selector='.product_title'),
-                "price": self._get_generic_field_value('price', 0, css_selector='.woocommerce-Price-amount'),
-                "description": self._get_generic_field_value('description', '', css_selector='.woocommerce-product-details__short-description'),
-                "images": self._get_generic_field_value('images', [], css_selector='.woocommerce-product-gallery__image img', multi_value=True),
-                "company_name": self._get_generic_field_value('company_name', '', css_selector='.brand, .manufacturer'),
-                "category": self._get_generic_field_value('category', '', css_selector='.posted_in a'),
-            }
-            logger.debug(f'\nAFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
+            # * 1- Extract data using "script-json+ld tag". If json_ld script tag found in the web page return the product_data
+            json_ld_data = self._extract_json_ld_data(res) if (res := self._scrape_json_ld()) else {}
+            if json_ld_data:
+                self.product_data = subset_dict(json_ld_data, self.needed_fields)
+                logger.debug(f'\nAFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
+                # ? Insert-upadte product data into database
+                result: bool = upsert_product_data(product_data=self.product_data)
+                if not result:
+                    logger.warning('No product inserted into/updated from product table')
+                else:
+                    logger.warning('Product data inserted/updated into product table')
+                is_extracted_completed = True
+            # * 2- Extract data using "generic field value" if not found in JSON-LD (The problem with this method is this method is very inaqurate and its success rate is lower than 10%)
+            # if not is_extracted_completed:
+            # self.product_data = {
+            #     "url": self.product_url,
+            #     "title": self._get_generic_field_value('title', '', css_selector='h1'),
+            #     "price": self._get_generic_field_value('price', 0, css_selector='.woocommerce-Price-amount'),
+            #     "description": self._get_generic_field_value('description', '', css_selector='.woocommerce-product-details__short-description'),
+            #     "images": self._get_generic_field_value('images', [], css_selector='.woocommerce-product-gallery__image img', multi_value=True),
+            #     "company_name": self._get_generic_field_value('company_name', '', css_selector='.brand, .manufacturer'),
+            #     "category": self._get_generic_field_value('category', '', css_selector='.posted_in a'),
+            # }
             # * 3- If any Product data field could not be found in previous methods try to scrape data using single fields
-            pass
+            if not is_extracted_completed:
+                # ! TODO
+                pass
             # ? Insert-upadte product data into database
             result: bool = upsert_product_data(product_data=self.product_data)
             if not result:
                 logger.warning('No product inserted into/updated from product table')
             else:
                 logger.warning('Product data inserted/updated into product table')
-            # Do not reuse current selenium driver
-            if config.METHOD == 'selenium' and not config.REUSE_DRIVER:
-                self._close_driver()
-        except Exception:
+        except Exception as e:
+            logger.error(f'\nError happened in scraping data: {e.__str__()}')
             self._close_driver()
-        return self.product_data
+        if self.driver and not config.REUSE_DRIVER:
+            self._close_driver()
+        logger.debug(f'\nAFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
+        return {'status': 'ok', 'msg': 'Data scrapped and extracted successfully', 'data': self.product_data}
 
     # ! Following methods used to initialize Extraction instance
 
@@ -318,7 +333,7 @@ class Extractor:
             logger.error(f"_extract_json_ld_data error: {e}")
         return result
     
-    def _get_generic_field_value(self, field_name: str, default_return_value: Any, css_selector: str='', xpath: str='', multi_value: bool=False, method: Optional[str] = None) -> str:
+    def _get_generic_field_value(self, field_name: str, default_return_value: Any, css_selector: str='', multi_value: bool=False) -> str:
         """Extracts the value of the field_name of the product from the BeautifulSoup object or Selenium driver."""
         try:
             logger.info(f'try to extract data for "{field_name}" field...')
@@ -353,7 +368,7 @@ class Extractor:
             logger.error(f"Error extracting {field_name}: {e}")
             data.update({'status': 'nok', 'msg': f'Error: cannot extract {field_name}'})
         return data
-    
+    # ! following methods used to scrape data for a single field
     def _find_name_title(self):
         """Get product name value manually
         """
