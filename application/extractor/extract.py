@@ -87,18 +87,7 @@ class Extractor:
                 else:
                     logger.warning('Product data inserted/updated into product table')
                 is_extracted_completed = True
-            # * 2- Extract data using "generic field value" if not found in JSON-LD (The problem with this method is this method is very inaqurate and its success rate is lower than 10%)
-            # if not is_extracted_completed:
-            # self.product_data = {
-            #     "url": self.product_url,
-            #     "title": self._get_generic_field_value('title', '', css_selector='h1'),
-            #     "price": self._get_generic_field_value('price', 0, css_selector='.woocommerce-Price-amount'),
-            #     "description": self._get_generic_field_value('description', '', css_selector='.woocommerce-product-details__short-description'),
-            #     "images": self._get_generic_field_value('images', [], css_selector='.woocommerce-product-gallery__image img', multi_value=True),
-            #     "company_name": self._get_generic_field_value('company_name', '', css_selector='.brand, .manufacturer'),
-            #     "category": self._get_generic_field_value('category', '', css_selector='.posted_in a'),
-            # }
-            # * 3- If any Product data field could not be found in previous methods try to scrape data using single fields
+            # * 2- If any Product data field could not be found in previous methods try to scrape data for every single field
             if not is_extracted_completed:
                 # ! TODO
                 pass
@@ -333,44 +322,9 @@ class Extractor:
             logger.error(f"_extract_json_ld_data error: {e}")
         return result
     
-    def _get_generic_field_value(self, field_name: str, default_return_value: Any, css_selector: str='', multi_value: bool=False) -> str:
-        """Extracts the value of the field_name of the product from the BeautifulSoup object or Selenium driver."""
-        try:
-            logger.info(f'try to extract data for "{field_name}" field...')
-            field_data: dict = self._find_product_field_data(field_name=field_name,css_selector=css_selector)
-            # print(f'FIELD DATA: {field_data}')
-            field_value_list = field_data.get(field_name, default_return_value)
-        except Exception as e:
-            logger.error(f"Error extracting {field_name}: {e}")
-        if multi_value:
-            return field_value_list if field_value_list else default_return_value
-        return field_value_list[0] if field_value_list else default_return_value
-    
-    def _find_product_field_data(self, field_name: str, css_selector: str='') -> dict:
-        """Scrape product data.
-        field_name: The name of the field to extract (e.g., title, price, description).
-        css_selctor: The CSS selector to use for scraping"""
-        try:
-            data: dict = {f'{field_name}': [], 'status': '', 'msg': ''}
-            if not css_selector:
-                raise ValueError("css_selector must be provided")
-            if not self.soup:
-                raise ValueError("BeautifulSoup must be provided")
-            tags = self.soup.select(f"{css_selector}")
-            for tag in tags:
-                if tag.get_text(strip=True):
-                    data[f'{field_name}'].append(tag.get_text(strip=True))
-            data.update({'status': 'ok', 'msg': f'Successfully extracted "{field_name}"'})
-        except ValueError as ve:
-            logger.error(f"ValueError: {ve}")
-            data.update({'status': 'nok', 'msg': f'Error: {ve}'})
-        except Exception as e:
-            logger.error(f"Error extracting {field_name}: {e}")
-            data.update({'status': 'nok', 'msg': f'Error: cannot extract {field_name}'})
-        return data
     # ! following methods used to scrape data for a single field
-    def _find_name_title(self):
-        """Get product name value manually
+    def _find_title(self):
+        """Get product title
         """
         try:
             pass
