@@ -70,9 +70,10 @@ class Extractor:
             if config.METHOD == "selenium":
                 if not self._initialize_driver():
                     return {'status': 'error', 'msg': 'WebDriverException occurred', 'data': self.product_data}
-            elif config.METHOD == "requests":
-                if not self._initialize_soup():
-                    return {'status': 'error', 'msg': 'RequestException occurred', 'data': self.product_data}
+            self._initialize_soup()
+            if not self.soup:
+                logger.error('No HTML content to parse')
+                return {'status': 'error', 'msg': 'No HTML content to parse', 'data': self.product_data}
             logger.info(f'Product url to be extracted:\n{self.product_url}')
             # ? Extract product data using diffrent methods
             # * 1- Extract data using "script-json+ld tag". If json_ld script tag found in the web page return the product_data
@@ -323,11 +324,90 @@ class Extractor:
         return result
     
     # ! following methods used to scrape data for a single field
-    def _find_title(self):
+    
+    def _extract_fields(self,
+                        title_selector:str|list[str]='h1',
+                        price_selector:str|list[str]='.price',
+                        description_selector:str|list[str]='.description',
+                        images_selector:str|list[str]='.images img',
+                        company_selector:str|list[str]=['.brand', '.company'],
+                        category_selector:str|list[str]='.category') -> dict:
+        """Scrape and extract data for all needed fields manually using css selectors
+
+        Returns:
+            dict: _description_
+        """
+        self.product_title: str = self.__find_title(title_selector)
+        self.product_price: float = self.__find_price(price_selector)
+        self.product_description: str = self.__find_description(description_selector)
+        self.product_images: list = self.__find_images(images_selector)
+        self.product_name: str = self.product_title
+        self.company_name: str = self.__find_company_name(company_selector)
+        self.categories: list = self.__find_category(category_selector)
+        self.product_data.update({
+            "title": self.product_title,
+            "price": self.product_price,
+            "description": self.product_description,
+            "images": self.product_images,
+            "name": self.product_title,
+            "company_name": self.company_name,
+            "category": self.categories
+        })
+        return self.product_data
+    
+    def __find_title(self, title_selector) -> str:
         """Get product title
+        """
+        try:
+            if not self.soup:
+                return ''
+            title: str = ''
+            title = self.soup.select(title_selector)[0].get_text().strip()
+        except Exception as e:
+            logger.error(f'Error in getting product title: {e.__str__()}')
+        return title
+    
+    def __find_price(self, price_selector):
+        """Get product price
         """
         try:
             pass
         except Exception as e:
-            logger.error(f'Error in getting product name value: {e.__str__()}')
+            logger.error(f'Error in getting product price: {e.__str__()}')
+        return 0.0
+    
+    def __find_description(self, description_selector):
+        """Get product description
+        """
+        try:
+            pass
+        except Exception as e:
+            logger.error(f'Error in getting product description: {e.__str__()}')
         return ''
+    
+    def __find_images(self, images_selector):
+        """Get product images
+        """
+        try:
+            pass
+        except Exception as e:
+            logger.error(f'Error in getting product images: {e.__str__()}')
+        return []
+    
+    def __find_company_name(self, company_selector):
+        """Get product company name
+        """
+        try:
+            pass
+        except Exception as e:
+            logger.error(f'Error in getting product company name: {e.__str__()}')
+        return ''
+    
+    def __find_category(self, category_selector):
+        """Get product category
+        """
+        try:
+            pass
+        except Exception as e:
+            logger.error(f'Error in getting product category: {e.__str__()}')
+        return []
