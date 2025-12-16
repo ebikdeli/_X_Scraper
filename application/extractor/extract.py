@@ -15,6 +15,7 @@ import requests
 from requests import Response
 import config
 from bs4 import BeautifulSoup, Tag
+from urllib.parse import urljoin
 import time
 from logger.logger import setup_logger
 import json
@@ -25,14 +26,14 @@ logger = setup_logger('scraper.log', __name__)
 
 
 class Extractor:
-    """A class to extract product data from e-commerce websites.\n
-    Every methods that scrape a single attribute can be called with arbitrary scraping method (For eg, we can scrape title with selenium and image using Beautiful soup. But beware because it could have additional proccessing overhead).\n"""
-    def __init__(self, product_url: str, method: str=config.METHOD, driver: WebDriver|None=None, requests_response: Response|None=None, soup: BeautifulSoup|None=None):
+    """This class is the hearth of the scraper application.\n
+    It provides methods to extract product information from various e-commerce platforms using either Selenium or Requests libraries.\n"""
+    def __init__(self, product_url: str, method: str=config.METHOD, driver: WebDriver|None=None, requests_response: Response|None=None, soup: BeautifulSoup|None=None, css_selectors: dict|None=None) -> None:
         # Initialize product attributes with default values one by one
         self.needed_fields: list = ['url', 'title', 'price', 'description', 'images', 'name', 'company_name', 'category']
         self.product_url = product_url
         self.product_title: str = 'N/A'
-        self.product_price: float = 0.0
+        self.product_price: float = 0
         self.product_description: str = 'N/A'
         self.product_images: list = []
         self.product_name: str = 'N/A'
@@ -53,10 +54,11 @@ class Extractor:
         self.html_body: str = ''
         self.soup = soup
         self.method = method
+        self.css_selectors = css_selectors if css_selectors else {'title_selector': '', 'price_selector': '', 'description_selector': '', 'images_selector': '', 'company_selector': [], 'category_selector': ''}
 
     def scrape(self) -> dict:
         """
-        Scraps and extract product data from a given e-commerce product URL.
+        Scraps and extract product data from a given e-commerce product URL. This is the main method of the Extractor class and start the extraction process.
 
         Args:
             url (str): The product page URL.
@@ -66,7 +68,7 @@ class Extractor:
                 images, name, company_name, category, and other standard product data.
         """
         try:
-            is_extracted_completed : bool = False
+            is_extraction_completed : bool = False
             if config.METHOD == "selenium":
                 if not self._initialize_driver():
                     return {'status': 'error', 'msg': 'WebDriverException occurred', 'data': self.product_data}
@@ -75,6 +77,7 @@ class Extractor:
                 logger.error('No HTML content to parse')
                 return {'status': 'error', 'msg': 'No HTML content to parse', 'data': self.product_data}
             logger.info(f'Product url to be extracted:\n{self.product_url}')
+            
             # ? Extract product data using diffrent methods
             # * 1- Extract data using "script-json+ld tag". If json_ld script tag found in the web page return the product_data
             json_ld_data = self._extract_json_ld_data(res) if (res := self._scrape_json_ld()) else {}
@@ -87,11 +90,12 @@ class Extractor:
                     logger.warning('No product inserted into/updated from product table')
                 else:
                     logger.warning('Product data inserted/updated into product table')
-                is_extracted_completed = True
+                is_extraction_completed = True
             # * 2- If any Product data field could not be found in previous methods try to scrape data for every single field
-            if not is_extracted_completed:
+            if not is_extraction_completed:
                 # ! TODO
                 pass
+            
             # ? Insert-upadte product data into database
             result: bool = upsert_product_data(product_data=self.product_data)
             if not result:
@@ -101,6 +105,7 @@ class Extractor:
         except Exception as e:
             logger.error(f'\nError happened in scraping data: {e.__str__()}')
             self._close_driver()
+            
         if self.driver and not config.REUSE_DRIVER:
             self._close_driver()
         logger.debug(f'\nAFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
@@ -322,16 +327,41 @@ class Extractor:
         except Exception as e:
             logger.error(f"_extract_json_ld_data error: {e}")
         return result
+
+    def _get_meta_content(self, keys: list) -> str | None:
+        """Return the first meta content for given property/name keys.
+
+        Keys are tried in order; for each key we check `property` then `name` attributes.
+        """
+        try:
+            if not self.soup:
+                return None
+            for key in keys:
+                # try property
+                tag = self.soup.find('meta', attrs={'property': key})
+                if tag and isinstance(tag, Tag):
+                    content = tag.get('content')
+                    if content:
+                        return str(content).strip()
+                # try name
+                tag = self.soup.find('meta', attrs={'name': key})
+                if tag and isinstance(tag, Tag):
+                    content = tag.get('content')
+                    if content:
+                        return str(content).strip()
+            return None
+        except Exception:
+            return None
     
     # ! following methods used to scrape data for a single field
     
     def _extract_fields(self,
-                        title_selector:str|list[str]='h1',
-                        price_selector:str|list[str]='.price',
-                        description_selector:str|list[str]='.description',
-                        images_selector:str|list[str]='.images img',
-                        company_selector:str|list[str]=['.brand', '.company'],
-                        category_selector:str|list[str]='.category') -> dict:
+                        title_selector:str|list[str]|None=None,
+                        price_selector:str|list[str]|None=None,
+                        description_selector:str|list[str]|None=None,
+                        images_selector:str|list[str]|None=None,
+                        company_selector:str|list[str]|None=None,
+                        category_selector:str|list[str]|None=None) -> dict:
         """Scrape and extract data for all needed fields manually using css selectors
 
         Returns:
@@ -355,59 +385,260 @@ class Extractor:
         })
         return self.product_data
     
-    def __find_title(self, title_selector) -> str:
+    def __find_title(self, title_selector: str|list|None=None) -> str:
         """Get product title
         """
         try:
             if not self.soup:
                 return ''
+            # try og:title / twitter:title first
+            meta_title = self._get_meta_content(['og:title', 'twitter:title'])
+            if meta_title:
+                return meta_title
+
             title: str = ''
-            title = self.soup.select(title_selector)[0].get_text().strip()
+            if isinstance(title_selector, str):
+                title_selector = [title_selector]
+            if not title_selector or not title:
+                title_selector = ['h1', 'h2', '.product-title', '.product_name', '.product-name']
+            if isinstance(title_selector, list):
+                for selector in title_selector:
+                    elements = self.soup.select(selector)
+                    if elements:
+                        title = elements[0].get_text().strip()
+                        if title:
+                            break
+            return title
         except Exception as e:
             logger.error(f'Error in getting product title: {e.__str__()}')
         return title
     
-    def __find_price(self, price_selector):
+    def __find_price(self, price_selector: str|list|None=None) -> int:
         """Get product price
         """
         try:
-            pass
+            if not self.soup:
+                return 0
+            price: int = 0
+            # try meta price tags first
+            meta_price = self._get_meta_content(['product:price:amount', 'og:price:amount', 'price', 'og:price'])
+            if meta_price:
+                try:
+                    price_candidate = self.__process_price_text(str(meta_price))
+                    if price_candidate > 0:
+                        return price_candidate
+                except Exception:
+                    pass
+
+            if not price_selector:
+                price_selector = ['.price', '.product-price', '.amount', '.current-price', '.woocommerce-Price-amount', '.price-value']
+            if isinstance(price_selector, str):
+                price_selector = [price_selector]
+            if isinstance(price_selector, list):
+                for selector in price_selector:
+                    elements = self.soup.select(selector)
+                    if elements:
+                        price_text: str = elements[0].get_text().strip()
+                        price = self.__process_price_text(price_text)
+                        if price > 0:
+                            break
         except Exception as e:
             logger.error(f'Error in getting product price: {e.__str__()}')
-        return 0.0
+        return price
     
-    def __find_description(self, description_selector):
+    def __process_price_text(self, price_text: str) -> int:
+        """Process and extract price from text string.
+        
+        Handles:
+        - Converting non-English digits to English
+        - Removing separator characters (dots, slashes, etc.)
+        - Detecting ریال/rial and dividing by 10 if found
+        
+        Args:
+            price_text: Raw price text extracted from HTML
+            
+        Returns:
+            int: Processed price value
+        """
+        try:
+            # Check if ریال or rial/Rial is present (case-insensitive for rial)
+            has_rial = 'ریال' in price_text or 'rial' in price_text.lower()
+            # Convert to English digits
+            price_text = to_english_digits(price_text)
+            # Remove all non-digit characters (removes separators like . / etc.)
+            price_text = re.sub(r"[^\d]", "", price_text)
+            # Convert to integer
+            price = int(price_text) if price_text else 0
+            # Divide by 10 if rial currency was detected
+            if has_rial and price > 0:
+                price = price // 10
+            return price
+        except Exception as e:
+            logger.error(f'Error processing price text: {e.__str__()}')
+            return 0
+    
+    def __find_description(self, description_selector:str|list|None=None) -> str:
         """Get product description
         """
         try:
-            pass
+            if not self.soup:
+                return ''
+            # try og:description / twitter:description first
+            meta_desc = self._get_meta_content(['og:description', 'twitter:description'])
+            if meta_desc:
+                return meta_desc
+
+            description: str = ''
+            if not description_selector:
+                description_selector = ['.description', '.product-description', '.describe']
+            if isinstance(description_selector, str) and description_selector:
+                description_selector = [description_selector]
+            if isinstance(description_selector, list):
+                for selector in description_selector:
+                    elements = self.soup.select(selector)
+                    if elements:
+                        description = elements[0].get_text().strip()
+                        if description:
+                            break
+            return description
         except Exception as e:
             logger.error(f'Error in getting product description: {e.__str__()}')
-        return ''
-    
-    def __find_images(self, images_selector):
+        return description
+
+    def __find_images(self, images_selector:str|list|None=None) -> list[str]:
         """Get product images
         """
         try:
-            pass
+            if not self.soup:
+                return []
+            images: list[str] = []
+            seen: set = set()
+            # normalize selectors
+            if not images_selector:
+                selectors = ['.product-images img', '.product-gallery img', '.woocommerce-product-gallery__image img', '.gallery img', '.product-image img', 'img']
+            elif isinstance(images_selector, str):
+                selectors = [images_selector]
+            else:
+                selectors = images_selector
+            def add_url(raw_url) -> None:
+                if raw_url is None:
+                    return
+                u = str(raw_url).strip()
+                if not u:
+                    return
+                # handle protocol-relative URLs
+                if u.startswith('//'):
+                    u = 'https:' + u
+                # data URIs are fine as-is
+                if not u.startswith('data:'):
+                    u = urljoin(self.product_url, u)
+                key = u
+                # filter by extension or allow data URIs
+                if not u.startswith('data:'):
+                    if not re.search(r"\.(jpg|jpeg|png|webp|gif|svg|bmp|avif|ico)(?:[?#]|$)", u, re.I):
+                        # allow some common image-like urls even without extension
+                        if not re.search(r'/images?/|/img/|cdn|/uploads/|product', u, re.I):
+                            return
+                if key in seen:
+                    return
+                seen.add(key)
+                images.append(u)
+            # extract from provided selectors
+            for selector in selectors:
+                try:
+                    elements = self.soup.select(selector)
+                except Exception:
+                    elements = []
+                for el in elements:
+                    if isinstance(el, Tag):
+                        if el.name == 'img':
+                            src = el.get('src') or el.get('data-src') or el.get('data-original') or el.get('data-lazy-src')
+                            # srcset handling - prefer highest-res candidate (last)
+                            if (not src) and el.get('srcset'):
+                                srcset_val = el.get('srcset')
+                                srcset = str(srcset_val)
+                                parts = [p.strip() for p in srcset.split(',') if p.strip()]
+                                if parts:
+                                    last = parts[-1].split()[0]
+                                    src = last
+                            if src is not None:
+                                add_url(src)
+                        else:
+                            # anchor or other tag that may contain image link in href
+                            href = el.get('href')
+                            if href is not None:
+                                add_url(href)
+                            # inline style background-image
+                            style = str(el.get('style') or '')
+                            if style:
+                                m = re.search(r'url\(([^)]+)\)', style)
+                                if m:
+                                    url_in_style = m.group(1).strip('\'\" ')
+                                    add_url(url_in_style)
+            # also check common meta tags
+            for mtag in self.soup.find_all('meta'):
+                if not isinstance(mtag, Tag):
+                    continue
+                prop = str(mtag.get('property') or mtag.get('name') or '').lower()
+                if prop in ('og:image', 'og:image:secure_url', 'twitter:image', 'twitter:image:src'):
+                    content = mtag.get('content')
+                    if content is not None:
+                        add_url(content)
+            return images
         except Exception as e:
             logger.error(f'Error in getting product images: {e.__str__()}')
         return []
     
-    def __find_company_name(self, company_selector):
+    def __find_company_name(self, company_selector:str|list|None=None) -> str:
         """Get product company name
         """
         try:
-            pass
+            if not self.soup:
+                return ''
+            # try og:site_name, author, brand meta tags first
+            meta_company = self._get_meta_content(['og:site_name', 'author', 'brand', 'og:brand'])
+            if meta_company:
+                return meta_company
+
+            company_name: str = ''
+            if not company_selector:
+                company_selector = ['.brand', '.manufacturer', '.company-name', '.vendor']
+            if isinstance(company_selector, str):
+                company_selector = [company_selector]
+            if isinstance(company_selector, list):
+                for selector in company_selector:
+                    elements = self.soup.select(selector)
+                    if elements:
+                        company_name = elements[0].get_text().strip()
+                        if company_name:
+                            break
         except Exception as e:
-            logger.error(f'Error in getting product company name: {e.__str__()}')
-        return ''
+            logger.error(f'Error in getting company name: {e.__str__()}')
+        return company_name
     
-    def __find_category(self, category_selector):
+    def __find_category(self, category_selector:str|list|None=None) -> list[str]:
         """Get product category
         """
         try:
-            pass
+            if not self.soup:
+                return []
+            # try product:category / og:category meta tags first
+            meta_cat = self._get_meta_content(['product:category', 'og:category', 'category'])
+            if meta_cat:
+                # split by common separators
+                parts = [p.strip() for p in re.split(r'[>,|;/\\]', str(meta_cat)) if p.strip()]
+                return parts
+
+            categories: list[str] = []
+            if not category_selector:
+                category_selector = ['.category', '.product-category', '.tag', 'categories', '.breadcrumbs a', '.breadcrumb a']
+            if isinstance(category_selector, str):
+                category_selector = [category_selector]
+            if isinstance(category_selector, list):
+                for selector in category_selector:
+                    elements = self.soup.select(selector)
+                    if elements:
+                        categories.extend([el.get_text().strip() for el in elements])
         except Exception as e:
             logger.error(f'Error in getting product category: {e.__str__()}')
-        return []
+        return categories
