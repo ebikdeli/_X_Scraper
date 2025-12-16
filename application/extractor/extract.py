@@ -33,7 +33,7 @@ class Extractor:
         self.needed_fields: list = ['url', 'title', 'price', 'description', 'images', 'name', 'company_name', 'category']
         self.product_url = product_url
         self.product_title: str = 'N/A'
-        self.product_price: float = 0
+        self.product_price: int = 0
         self.product_description: str = 'N/A'
         self.product_images: list = []
         self.product_name: str = 'N/A'
@@ -77,25 +77,67 @@ class Extractor:
                 logger.error('No HTML content to parse')
                 return {'status': 'error', 'msg': 'No HTML content to parse', 'data': self.product_data}
             logger.info(f'Product url to be extracted:\n{self.product_url}')
-            
-            # ? Extract product data using diffrent methods
-            # * 1- Extract data using "script-json+ld tag". If json_ld script tag found in the web page return the product_data
+            # ? Extract product data using different methods in order of reliability:
+            # * 1) JSON-LD (structured)  2) Meta tags (og:, twitter:, product:)  3) DOM selectors
             json_ld_data = self._extract_json_ld_data(res) if (res := self._scrape_json_ld()) else {}
             if json_ld_data:
                 self.product_data = subset_dict(json_ld_data, self.needed_fields)
-                logger.debug(f'\nAFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
-                # ? Insert-upadte product data into database
+                logger.debug(f'\nAFTER EXTRACTION (JSON-LD): data extracted for: "{self.product_url}":\n{self.product_data}')
                 result: bool = upsert_product_data(product_data=self.product_data)
                 if not result:
                     logger.warning('No product inserted into/updated from product table')
                 else:
                     logger.warning('Product data inserted/updated into product table')
                 is_extraction_completed = True
-            # * 2- If any Product data field could not be found in previous methods try to scrape data for every single field
+            # *  2) If JSON-LD not available or incomplete, use meta tags first then DOM selectors to fill gaps
             if not is_extraction_completed:
-                # ! TODO
-                pass
-            
+                meta = self._scrape_meta()
+                # apply meta values where available
+                if meta:
+                    # simple fields
+                    for f in ('title', 'description', 'name', 'company_name'):
+                        if meta.get(f) and (not self.product_data.get(f) or self.product_data.get(f) in (None, '', 'N/A')):
+                            self.product_data[f] = meta.get(f)
+                    # price
+                    if meta.get('price') and (not self.product_data.get('price')):
+                        try:
+                            price_val = meta.get('price')
+                            if price_val:
+                                self.product_data['price'] = int(price_val)
+                        except Exception:
+                            pass
+                    # category
+                    if meta.get('category') and (not self.product_data.get('category')):
+                        self.product_data['category'] = meta.get('category')
+                    # images - keep meta images to merge later with DOM images
+                    meta_images = meta.get('images') or []
+                else:
+                    meta_images = []
+                # * 3) Use selectors to fill remaining fields
+                selectors = self.css_selectors or {}
+                extracted = self._extract_fields(
+                    selectors.get('title_selector'),
+                    selectors.get('price_selector'),
+                    selectors.get('description_selector'),
+                    selectors.get('images_selector'),
+                    selectors.get('company_selector'),
+                    selectors.get('category_selector')
+                )
+                # merge images: prefer meta images first, then DOM-extracted images, dedupe while preserving order
+                final_images: list = []
+                seen = set()
+                for u in (meta_images + (extracted.get('images') or [])):
+                    if not u:
+                        continue
+                    uu = str(u).strip()
+                    if uu.startswith('//'):
+                        uu = 'https:' + uu
+                    uu = urljoin(self.product_url, uu) if not uu.startswith('data:') else uu
+                    if uu in seen:
+                        continue
+                    seen.add(uu)
+                    final_images.append(uu)
+                self.product_data['images'] = final_images
             # ? Insert-upadte product data into database
             result: bool = upsert_product_data(product_data=self.product_data)
             if not result:
@@ -105,7 +147,6 @@ class Extractor:
         except Exception as e:
             logger.error(f'\nError happened in scraping data: {e.__str__()}')
             self._close_driver()
-            
         if self.driver and not config.REUSE_DRIVER:
             self._close_driver()
         logger.debug(f'\nAFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
@@ -169,7 +210,7 @@ class Extractor:
         except Exception:
             pass
     
-    # ! Following methods used to scrape data from web page
+    # ! Following methods used to scrape data from web page using json+ld tag
     
     def _scrape_json_ld(self) -> dict|None:
         """Extract product data from JSON-LD script tags
@@ -328,6 +369,78 @@ class Extractor:
             logger.error(f"_extract_json_ld_data error: {e}")
         return result
 
+    # ! Following methods used to scrape data from web page using og:<field> tag
+
+    def _scrape_meta(self) -> dict:
+        """Collect common meta tag fields into a dict for quick fallback access.
+
+        Returns keys: title, description, images (list), price, company_name, category, name
+        """
+        try:
+            if not self.soup:
+                return {}
+            result: dict = {}
+            # title / name
+            title = self._get_meta_content(['og:title', 'twitter:title'])
+            if title:
+                result['title'] = title
+                result['name'] = title
+                self.product_title = title
+            # description
+            desc = self._get_meta_content(['og:description', 'twitter:description'])
+            if desc:
+                result['description'] = desc
+                self.product_description = desc
+            # images - collect multiple if available
+            images = []
+            # property-based
+            for key in ('og:image', 'og:image:secure_url', 'twitter:image', 'twitter:image:src'):
+                v = self._get_meta_content([key])
+                if v:
+                    images.append(v)
+                    self.product_images.append(v)
+            # link rel image_src
+            tag = self.soup.find('link', rel='image_src')
+            if tag and isinstance(tag, Tag) and tag.get('href'):
+                images.append(str(tag.get('href')))
+                self.product_images.append(str(tag.get('href')))
+            # remove duplicates preserving order
+            seen = set()
+            images_clean = []
+            for u in images:
+                if not u:
+                    continue
+                uu = str(u).strip()
+                if uu.startswith('//'):
+                    uu = 'https:' + uu
+                if not uu.startswith('data:'):
+                    uu = urljoin(self.product_url, uu)
+                if uu in seen:
+                    continue
+                seen.add(uu)
+                images_clean.append(uu)
+            if images_clean:
+                result['images'] = images_clean
+            # price
+            price = self._get_meta_content(['product:price:amount', 'og:price:amount', 'price', 'og:price'])
+            if price:
+                result['price'] = price
+                self.product_price = int(price)
+            # company / site
+            company = self._get_meta_content(['og:site_name', 'author', 'brand', 'og:brand'])
+            if company:
+                result['company_name'] = company
+                self.company_name = company
+            # category
+            cat = self._get_meta_content(['product:category', 'og:category', 'category'])
+            if cat:
+                parts = [p.strip() for p in re.split(r'[>,|;/\\]', str(cat)) if p.strip()]
+                result['category'] = parts
+                self.categories = result['category']
+            return result
+        except Exception:
+            return {}
+
     def _get_meta_content(self, keys: list) -> str | None:
         """Return the first meta content for given property/name keys.
 
@@ -368,7 +481,7 @@ class Extractor:
             dict: _description_
         """
         self.product_title: str = self.__find_title(title_selector)
-        self.product_price: float = self.__find_price(price_selector)
+        self.product_price: int = self.__find_price(price_selector)
         self.product_description: str = self.__find_description(description_selector)
         self.product_images: list = self.__find_images(images_selector)
         self.product_name: str = self.product_title
@@ -391,11 +504,8 @@ class Extractor:
         try:
             if not self.soup:
                 return ''
-            # try og:title / twitter:title first
-            meta_title = self._get_meta_content(['og:title', 'twitter:title'])
-            if meta_title:
-                return meta_title
-
+            if self.product_title:
+                return self.product_title
             title: str = ''
             if isinstance(title_selector, str):
                 title_selector = [title_selector]
@@ -417,6 +527,8 @@ class Extractor:
         """Get product price
         """
         try:
+            if self.product_price:
+                return self.product_price
             if not self.soup:
                 return 0
             price: int = 0
@@ -481,6 +593,8 @@ class Extractor:
         """Get product description
         """
         try:
+            if self.product_description:
+                return  self.product_description
             if not self.soup:
                 return ''
             # try og:description / twitter:description first
@@ -509,6 +623,8 @@ class Extractor:
         """Get product images
         """
         try:
+            if self.product_images:
+                return self.product_images
             if not self.soup:
                 return []
             images: list[str] = []
@@ -593,6 +709,8 @@ class Extractor:
         """Get product company name
         """
         try:
+            if self.company_name:
+                return self.company_name
             if not self.soup:
                 return ''
             # try og:site_name, author, brand meta tags first
@@ -620,6 +738,8 @@ class Extractor:
         """Get product category
         """
         try:
+            if self.categories:
+                return self.categories
             if not self.soup:
                 return []
             # try product:category / og:category meta tags first
