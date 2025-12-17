@@ -4,22 +4,22 @@ It is designed to be imported and used in the scraping logic.
 It uses the selenium library to create a headless Chrome driver instance with specific configurations.
 """
 
-
 import random
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from config import PROXIES
+import config
+
 
 def setup_driver(
-    headless: bool = True,
-    use_proxy: bool = False,
-    optimized: bool = True,
-    silent_mode_level: int = 5,
-    windows_size: str = '1920,1080',
-    disable_css: bool = True,
-    disable_image: bool = True,
-    implicit_wait: int = 5,
-    timeout: int = 30
+    headless: bool = config.SELENIUM_HEADLESS,
+    use_proxy: bool = config.SELENIUM_USE_PROXY,
+    optimized: bool = config.SELENIUM_OPTIMIZED,
+    silent_mode_level: int = config.SELENIUM_SILENT_MODE_LEVEL,
+    windows_size: str = config.SELENIUM_WINDOWZ_SIZE,
+    disable_css: bool = config.SELENIUM_DISABLE_CSS,
+    disable_image: bool = config.SELENIUM_DISABLE_IMAGE,
+    implicit_wait: int = config.SELENIUM_IMPLICIT_WAIT,
+    timeout: int = config.SELENIUM_TIMEOUT
 ) -> webdriver.Chrome:
     """
     Initialize and return a headless Selenium Chrome driver with proxy rotation.
@@ -88,8 +88,8 @@ def setup_driver(
         )
 
     # Rotate proxy
-    if use_proxy and PROXIES:
-        proxy = random.choice(PROXIES)
+    if use_proxy and config.PROXIES:
+        proxy = random.choice(config.PROXIES)
         chrome_options.add_argument(f'--proxy-server={proxy}')
 
     # Create the Chrome driver instance
