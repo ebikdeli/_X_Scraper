@@ -69,16 +69,13 @@ class Extractor:
         """
         try:
             is_extraction_completed : bool = False
-            if config.METHOD == "selenium":
-                if not self._initialize_driver():
-                    return {'status': 'error', 'msg': 'WebDriverException occurred', 'data': self.product_data}
-            self._initialize_soup()
-            if not self.soup:
-                logger.error('No HTML content to parse')
-                return {'status': 'error', 'msg': 'No HTML content to parse', 'data': self.product_data}
+            if not self._call_requests_then_selenium():
+                logger.error(f'Cannot extract data from "{self.product_url}"')
+                return {'status': 'nok', 'msg': f'Could not scrapped data from {self.product_url}', 'data': {}}
             logger.info(f'Product url to be extracted:\n{self.product_url}')
             # ? Extract product data using different methods in order of reliability:
             # * 1) JSON-LD (structured)  2) Meta tags (og:, twitter:, product:)  3) DOM selectors
+            logger.info('Try to extract product data using JSON-LD script...')
             json_ld_data = self._extract_json_ld_data(res) if (res := self._scrape_json_ld()) else {}
             if json_ld_data:
                 self.product_data = subset_dict(json_ld_data, self.needed_fields)
@@ -91,6 +88,7 @@ class Extractor:
                 is_extraction_completed = True
             # *  2) If JSON-LD not available or incomplete, use meta tags first then DOM selectors to fill gaps
             if not is_extraction_completed:
+                logger.info('Try to extract product data using Meta tags and DOM selectors...')
                 meta = self._scrape_meta()
                 # apply meta values where available
                 if meta:
@@ -153,15 +151,45 @@ class Extractor:
         return {'status': 'ok', 'msg': 'Data scrapped and extracted successfully', 'data': self.product_data}
 
     # ! Following methods used to initialize Extraction instance
-
-    def _initialize_driver(self) -> bool:
+    
+    def _call_requests_then_selenium(self) -> str|None:
+        """If requests could not call website well use driver instead. If requests succeeded return 'requests' else call 'driver'. If non called the webpage return None. 
+        """
+        is_request_success = True
+        if not self.__initialize_requests():
+            logger.info('Cannot initialize requests')
+            is_request_success = False
+        # * Check if requests successfully 
+        if not self.html_body:
+            is_request_success = False
+        if self.html_body and len(self.html_body) < 2000:
+            logger.warning('Seems html requests is not loaded well')
+            is_request_success = False
+        if "enable javascript" in self.html_body.lower():
+            logger.warning('JavaScript is required to load the page')
+            is_request_success = False
+        if self.soup and (self.soup.select_one('h1') is None or self.soup.select_one('h2') is None):
+            logger.warning('The page must be loaded with selenium')
+            is_request_success = False
+        # * Load webpage using Selenium driver
+        if not is_request_success:
+            if not self.__initialize_driver():
+                logger.error(f'Cannot load page even using Selenium in "{config.SLEEP_TIME}" seconds')
+                return None
+            logger.info('\nLoaded the page using selenium...\n')
+            return 'selenium'
+        logger.info('\nLoaded the webpage using requests...\n')
+        return 'requests'
+    
+    def __initialize_driver(self) -> bool:
         """Initializes the Selenium WebDriver if not already done. If initialization fails, it returns False."""
         if not self.driver:
             self.driver = setup_driver()
         try:
             self.driver.get(self.product_url)
-            time.sleep(3)  # Let JavaScript render
+            time.sleep(config.SLEEP_TIME)  # Let JavaScript render
             self.html_body = self.driver.page_source
+            self.__initialize_soup()
             return True
         except WebDriverException as e:
             logger.error(f"WebDriverException: {e}")
@@ -171,13 +199,16 @@ class Extractor:
             self.driver.quit()
         return False
     
-    def _initialize_requests(self) -> bool:
+    def __initialize_requests(self, header:dict={}) -> bool:
         """Initializes the requests response if not already done. If initialization fails, it returns False."""
         try:
-            response = requests.get(self.product_url)
+            if not header:
+                header['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:146.0) Gecko/20100101 Firefox/146.0'
+            response = requests.get(self.product_url, headers=header)
             response.raise_for_status()
             self.requests_response = response
             self.html_body = response.text
+            self.__initialize_soup()
             return True
         except requests.RequestException as e:
             logger.error(f"RequestException: {e}")
@@ -185,23 +216,17 @@ class Extractor:
             logger.error(f"Unexpected error: {e}")
         return False
     
-    def _initialize_soup(self) -> bool:
+    def __initialize_soup(self) -> bool:
         """Initializes the BeautifulSoup object if not already done. If initialization fails, it returns False."""
         try:
-            if not self.soup:
-                self.soup = BeautifulSoup(self.html_body, "html.parser")
+            self.soup = BeautifulSoup(self.html_body, "html.parser")
             return True
         except requests.RequestException as e:
             logger.error(f"RequestException: {e}")
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
         return False
-    
-    def _call_driver_insteadof_requests(self):
-        """If requests could not call website well use driver instead
-        """
-        pass
-    
+
     def _close_driver(self) -> None:
         """Close selenium driver if exists"""
         try:
@@ -221,6 +246,9 @@ class Extractor:
         try:
             json_ld_data = {}
             if self.soup:
+                # print('\n\nTO DEBUG...')
+                # print('\n\n', self.soup.prettify(), '\n\n')
+                # print('TO DEBUG\n\n')
                 scripts = self.soup.find_all('script', type='application/ld+json')
                 # print(scripts)
                 if not scripts:
