@@ -10,7 +10,10 @@ from selenium.webdriver.common.by import By
 from typing import Optional, Any
 from application.driver.chrome import setup_driver
 from application.data_management.manage_sqlite import upsert_product_data
-from ._resources import to_english_digits, subset_dict, clean_text
+from ._resources import (to_english_digits,
+                        subset_dict,
+                        clean_text,
+                        process_price_text)
 import requests
 from requests import Response
 import config
@@ -52,7 +55,7 @@ class Extractor:
         self.driver: Optional[WebDriver] = driver
         self.requests_response: Optional[requests.Response] = requests_response
         self.html_body: str = ''
-        self.soup = soup
+        self.soup = soup if soup else self.__initialize_soup()
         self.method = method
         self.css_selectors = css_selectors if css_selectors else {'title_selector': '', 'price_selector': '', 'description_selector': '', 'images_selector': '', 'company_selector': [], 'category_selector': ''}
 
@@ -68,24 +71,24 @@ class Extractor:
                 images, name, company_name, category, and other standard product data.
         """
         try:
+            # Following flag used to show if data extraction using orderly method was a success
             is_extraction_completed : bool = False
+            logger.info(f'Product URL to be scrapped and extracted:\n{self.product_url}\n')
+            # Call requests module first but if the URL should be loaded using Javascript then using Selenium to load the webpage
             if not self._call_requests_then_selenium():
-                logger.error(f'Cannot extract data from "{self.product_url}"')
+                logger.error(f'\nDid not scraped product data from folowing webpage:\n{self.product_url}\n')
                 return {'status': 'nok', 'msg': f'Could not scrapped data from {self.product_url}', 'data': {}}
-            logger.info(f'Product url to be extracted:\n{self.product_url}')
+            
             # ? Extract product data using different methods in order of reliability:
+            
             # * 1) JSON-LD (structured)  2) Meta tags (og:, twitter:, product:)  3) DOM selectors
-            logger.info('Try to extract product data using JSON-LD script...')
+            logger.info('Try to scrape and extract product data using JSON-LD script...\n')
             json_ld_data = self._extract_json_ld_data(res) if (res := self._scrape_json_ld()) else {}
             if json_ld_data:
                 self.product_data = subset_dict(json_ld_data, self.needed_fields)
-                logger.debug(f'\nAFTER EXTRACTION (JSON-LD): data extracted for: "{self.product_url}":\n{self.product_data}')
-                result: bool = upsert_product_data(product_data=self.product_data)
-                if not result:
-                    logger.warning('No product inserted into/updated from product table')
-                else:
-                    logger.warning('Product data inserted/updated into product table')
+                logger.debug(f'\nAFTER EXTRACTION (JSON-LD): data extracted for webpage: "{self.product_url}":\n{self.product_data}')
                 is_extraction_completed = True
+                
             # *  2) If JSON-LD not available or incomplete, use meta tags first then DOM selectors to fill gaps
             if not is_extraction_completed:
                 logger.info('Try to extract product data using Meta tags and DOM selectors...')
@@ -111,6 +114,7 @@ class Extractor:
                     meta_images = meta.get('images') or []
                 else:
                     meta_images = []
+                    
                 # * 3) Use selectors to fill remaining fields
                 selectors = self.css_selectors or {}
                 extracted = self._extract_fields(
@@ -136,19 +140,20 @@ class Extractor:
                     seen.add(uu)
                     final_images.append(uu)
                 self.product_data['images'] = final_images
+                
             # ? Insert-upadte product data into database
             result: bool = upsert_product_data(product_data=self.product_data)
             if not result:
                 logger.warning('No product inserted into/updated from product table')
             else:
-                logger.warning('Product data inserted/updated into product table')
+                logger.info('Product data inserted/updated into product table')
         except Exception as e:
-            logger.error(f'\nError happened in scraping data: {e.__str__()}')
+            logger.error(f'\nError happened in scraping data: {e.__str__()}\n')
             self._close_driver()
         if self.driver and not config.REUSE_DRIVER:
             self._close_driver()
-        logger.debug(f'\nAFTER EXTRACTION: data exracted for: "{self.product_url}":\n{self.product_data}')
-        return {'status': 'ok', 'msg': 'Data scrapped and extracted successfully', 'data': self.product_data}
+        logger.debug(f'\nAFTER EXTRACTION: Web page URL is:\n"{self.product_url}\n"The extracted data in dict format:\n{self.product_data}\n')
+        return {'status': 'ok', 'msg': 'Data scrapped and extracted with no error', 'data': self.product_data}
 
     # ! Following methods used to initialize Extraction instance
     
@@ -186,6 +191,7 @@ class Extractor:
         if not self.driver:
             self.driver = setup_driver()
         try:
+            logger.info(f'Calling product page using selenium driver...')
             self.driver.get(self.product_url)
             time.sleep(config.SLEEP_TIME)  # Let JavaScript render
             self.html_body = self.driver.page_source
@@ -202,6 +208,7 @@ class Extractor:
     def __initialize_requests(self, header:dict={}) -> bool:
         """Initializes the requests response if not already done. If initialization fails, it returns False."""
         try:
+            logger.info(f'Calling product page using requests module...')
             if not header:
                 header['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:146.0) Gecko/20100101 Firefox/146.0'
             response = requests.get(self.product_url, headers=header)
@@ -216,21 +223,18 @@ class Extractor:
             logger.error(f"Unexpected error: {e}")
         return False
     
-    def __initialize_soup(self) -> bool:
+    def __initialize_soup(self) -> None:
         """Initializes the BeautifulSoup object if not already done. If initialization fails, it returns False."""
         try:
-            self.soup = BeautifulSoup(self.html_body, "html.parser")
-            return True
-        except requests.RequestException as e:
-            logger.error(f"RequestException: {e}")
+            self.soup = BeautifulSoup(self.html_body, "lxml")
         except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-        return False
+            self.soup = BeautifulSoup(self.html_body, "html.parser")
 
     def _close_driver(self) -> None:
         """Close selenium driver if exists"""
         try:
             if self.driver:
+                logger.info('Closing selenium driver...')
                 self.driver.quit()
         except Exception:
             pass
@@ -238,46 +242,49 @@ class Extractor:
     # ! Following methods used to scrape data from web page using json+ld tag
     
     def _scrape_json_ld(self) -> dict|None:
-        """Extract product data from JSON-LD script tags
+        """Scrape product data from JSON-LD script tags
 
         Returns:
             dict|None: Returns dict if data found in the 'ld+script' script tag. If no data found or error happened returns None.
         """
         try:
+            if not self.soup:
+                return
             json_ld_data = {}
-            if self.soup:
-                # print('\n\nTO DEBUG...')
-                # print('\n\n', self.soup.prettify(), '\n\n')
-                # print('TO DEBUG\n\n')
-                scripts = self.soup.find_all('script', type='application/ld+json')
-                # print(scripts)
-                if not scripts:
-                    logger.warning('No application/ld+json script found')
-                    return
-                for script in scripts:
-                    try:
-                        json_content = script.text
-                        if not json_content:
-                            logger.warning('No json content found in the script')
-                            return
-                        # print (json_content)
-                        if json_content:
-                            data = json.loads(json_content)
-                            # print(type(data))
-                            # print(data)
-                            if isinstance(data, list):
-                                for item in data:
-                                    if item.get('@type') == 'Product':
-                                        json_ld_data = item
-                                        # break
-                            elif data.get('@type') == 'Product':
-                                json_ld_data = data
-                                # break
-                            return json_ld_data
-                    except Exception as e:
-                        logger.error(f'Error parsing JSON-LD script: {e.__str__()}')
+            logger.info('Searching for application/ld+json script tags to scrape product data...')
+            scripts = self.soup.find_all('script', type='application/ld+json')
+            if not scripts:
+                logger.warning('No application/ld+json script found')
+                return
+            for script in scripts:
+                try:
+                    json_content = script.text
+                    if not json_content:
+                        logger.warning('No json content found in the script')
+                        return
+                    # print (json_content)
+                    if json_content:
+                        data = json.loads(json_content)
+                        if isinstance(data, list):
+                            for item in data:
+                                if item.get('@type') == 'Product':
+                                    json_ld_data = item
+                                    break
+                        elif data.get('@type') == 'Product':
+                            json_ld_data = data
+                            break
+                except Exception as e:
+                    logger.error(f'Error parsing JSON-LD script: {e.__str__()}')
+                    continue
+            # Executed if found data in the script
+            if json_ld_data:
+                logger.info(f'Successfully scrapped JSON-LD script data:\n{json_ld_data}\n')
+                return json_ld_data
+            # If no data fround
+            else:
+                logger.warning('No JSON-LD data found\n')
         except Exception as e:
-            logger.error(f'Error in extracting data from JSON-LD: {e.__str__()}')
+            logger.error(f'\nError in extracting data from JSON-LD: {e.__str__()}\n')
         return
 
     def _extract_json_ld_data(self, json_ld_data: dict) -> dict:
@@ -292,7 +299,7 @@ class Extractor:
             dict: Normalized product data ready for database upsert. Keys returned:
                 - url (str)
                 - title (str)
-                - price (float)
+                - price (int)
                 - description (str)
                 - images (list[str])
                 - name (str)       # same as title where applicable
@@ -308,7 +315,7 @@ class Extractor:
         result: dict = {
             "url": self.product_url,
             "title": self.product_title,
-            "price": 0.0,
+            "price": 0,
             "description": self.product_description,
             "images": [],
             "name": self.product_name,
@@ -324,6 +331,7 @@ class Extractor:
         try:
             if not json_ld_data or not isinstance(json_ld_data, dict):
                 return result
+            logger.info(f'\nExtracting data from scraped JSON-LD data that scrapped before...')
             # title / name
             title = json_ld_data.get("name") or json_ld_data.get("headline")
             if title:
@@ -360,6 +368,7 @@ class Extractor:
             mpn = json_ld_data.get("mpn")
             if mpn:
                 result["mpn"] = str(mpn)
+            # ! Maybe needs works to be better
             # offers -> price, currency, availability
             offers = json_ld_data.get("offers")
             if offers:
@@ -375,9 +384,15 @@ class Extractor:
                         # remove non-digit/dot characters
                         price_str = re.sub(r"[^\d\.]", "", price_str)
                         try:
-                            result["price"] = float(price_str) if price_str else 0.0
+                            price_value = int(price_str) if price_str else 0
+                            try:
+                                if price_value and currency and currency.lower() in ('rial', 'ریال'):
+                                    price_value = price_value // 10
+                            except (ValueError, TypeError, AttributeError):
+                                pass
+                            result["price"] = price_value
                         except Exception:
-                            result["price"] = 0.0
+                            result["price"] = 0
                     result["currency"] = currency
                     result["availability"] = availability
             # aggregateRating
@@ -395,6 +410,10 @@ class Extractor:
                     result["review_count"] = None
         except Exception as e:
             logger.error(f"_extract_json_ld_data error: {e}")
+        if result:
+            logger.info(f'Successfully extracted JSON-LD data:\n{result}\n')
+        else:
+            logger.warning('No data extracted from JSON-LD')
         return result
 
     # ! Following methods used to scrape data from web page using og:<field> tag
@@ -408,22 +427,25 @@ class Extractor:
             if not self.soup:
                 return {}
             result: dict = {}
+            logger.info('Extracting data from meta tags...')
             # title / name
-            title = self._get_meta_content(['og:title', 'twitter:title'])
+            title = self.__get_meta_content(['og:title', 'twitter:title'])
             if title:
                 result['title'] = title
                 result['name'] = title
+                logger.info(f'Extracted title from meta tags: {title}')
                 self.product_title = title
             # description
-            desc = self._get_meta_content(['og:description', 'twitter:description'])
+            desc = self.__get_meta_content(['og:description', 'twitter:description'])
             if desc:
                 result['description'] = desc
+                logger.info(f'Extracted description from meta tags: {desc}')
                 self.product_description = desc
             # images - collect multiple if available
             images = []
             # property-based
             for key in ('og:image', 'og:image:secure_url', 'twitter:image', 'twitter:image:src'):
-                v = self._get_meta_content([key])
+                v = self.__get_meta_content([key])
                 if v:
                     images.append(v)
                     self.product_images.append(v)
@@ -448,28 +470,37 @@ class Extractor:
                 seen.add(uu)
                 images_clean.append(uu)
             if images_clean:
+                logger.info(f'Extracted {len(images_clean)} images from meta tags')
                 result['images'] = images_clean
             # price
-            price = self._get_meta_content(['product:price:amount', 'og:price:amount', 'price', 'og:price'])
+            price = self.__get_meta_content(['product:price:amount', 'og:price:amount', 'price', 'og:price'])
             if price:
+                price_candidate = process_price_text(str(price))
+                if price_candidate > 0:
+                    price = price_candidate
                 result['price'] = price
+                logger.info(f'Extracted price from meta tags: {price}')
                 self.product_price = int(price)
             # company / site
-            company = self._get_meta_content(['og:site_name', 'author', 'brand', 'og:brand'])
+            company = self.__get_meta_content(['og:site_name', 'author', 'brand', 'og:brand'])
             if company:
                 result['company_name'] = company
+                logger.info(f'Extracted company name from meta tags: {company}')
                 self.company_name = company
             # category
-            cat = self._get_meta_content(['product:category', 'og:category', 'category'])
+            cat = self.__get_meta_content(['product:category', 'og:category', 'category'])
             if cat:
                 parts = [p.strip() for p in re.split(r'[>,|;/\\]', str(cat)) if p.strip()]
                 result['category'] = parts
+                logger.info(f'Extracted category from meta tags: {parts}')
                 self.categories = result['category']
             return result
-        except Exception:
+        except Exception as e:
+            logger.error(f'Error in extracting data from meta tags: {e.__str__()}\n')
+            logger.error(f'Did not extract any data from meta tags\n')
             return {}
 
-    def _get_meta_content(self, keys: list) -> str | None:
+    def __get_meta_content(self, keys: list) -> str | None:
         """Return the first meta content for given property/name keys.
 
         Keys are tried in order; for each key we check `property` then `name` attributes.
@@ -483,12 +514,14 @@ class Extractor:
                 if tag and isinstance(tag, Tag):
                     content = tag.get('content')
                     if content:
+                        logger.info(f'Found meta tag for key "{key}": {content}')
                         return str(content).strip()
                 # try name
                 tag = self.soup.find('meta', attrs={'name': key})
                 if tag and isinstance(tag, Tag):
                     content = tag.get('content')
                     if content:
+                        logger.info(f'Found meta tag for key "{key}": {content}')
                         return str(content).strip()
             return None
         except Exception:
@@ -503,11 +536,12 @@ class Extractor:
                         images_selector:str|list[str]|None=None,
                         company_selector:str|list[str]|None=None,
                         category_selector:str|list[str]|None=None) -> dict:
-        """Scrape and extract data for all needed fields manually using css selectors
+        """Scrape and extract data for all needed fields one by one manually using css selectors
 
         Returns:
             dict: _description_
         """
+        logger.info(f'Extact needed fields one by one...\n')
         self.product_title: str = self.__find_title(title_selector)
         self.product_price: int = self.__find_price(price_selector)
         self.product_description: str = self.__find_description(description_selector)
@@ -524,16 +558,18 @@ class Extractor:
             "company_name": self.company_name,
             "category": self.categories
         })
+        logger.info('Extracting data for the fields one by one completed\n')
         return self.product_data
     
     def __find_title(self, title_selector: str|list|None=None) -> str:
         """Get product title
         """
         try:
-            if not self.soup:
-                return ''
+            # If title is already founded in the product data from meta tags do not proceed to extract the title again
             if self.product_title:
                 return self.product_title
+            if not self.soup:
+                return ''
             title: str = ''
             if isinstance(title_selector, str):
                 title_selector = [title_selector]
@@ -546,7 +582,10 @@ class Extractor:
                         title = elements[0].get_text().strip()
                         if title:
                             break
-            return title
+            if title:
+                logger.info(f'Extracted title using DOM selectors: {title}')
+            else:
+                logger.info(f'Did not found title using DOM selectors without raising error')
         except Exception as e:
             logger.error(f'Error in getting product title: {e.__str__()}')
         return title
@@ -555,21 +594,12 @@ class Extractor:
         """Get product price
         """
         try:
+            # If price is already founded in the product data from meta tags do not proceed to extract the price again
             if self.product_price:
                 return self.product_price
             if not self.soup:
                 return 0
             price: int = 0
-            # try meta price tags first
-            meta_price = self._get_meta_content(['product:price:amount', 'og:price:amount', 'price', 'og:price'])
-            if meta_price:
-                try:
-                    price_candidate = self.__process_price_text(str(meta_price))
-                    if price_candidate > 0:
-                        return price_candidate
-                except Exception:
-                    pass
-
             if not price_selector:
                 price_selector = ['.price', '.product-price', '.amount', '.current-price', '.woocommerce-Price-amount', '.price-value']
             if isinstance(price_selector, str):
@@ -579,57 +609,26 @@ class Extractor:
                     elements = self.soup.select(selector)
                     if elements:
                         price_text: str = elements[0].get_text().strip()
-                        price = self.__process_price_text(price_text)
-                        if price > 0:
-                            break
+                        price_value = process_price_text(price_text)
+                        if price_value > 0:
+                            price = price_value
+            if price:
+                logger.info(f'Extracted price using DOM selectors: {price}\n')
+            else:
+                logger.info(f'Did not found price using DOM selectors without raising error')
         except Exception as e:
-            logger.error(f'Error in getting product price: {e.__str__()}')
+            logger.error(f'Error in getting product price:\n{e.__str__()}\n')
         return price
-    
-    def __process_price_text(self, price_text: str) -> int:
-        """Process and extract price from text string.
-        
-        Handles:
-        - Converting non-English digits to English
-        - Removing separator characters (dots, slashes, etc.)
-        - Detecting ریال/rial and dividing by 10 if found
-        
-        Args:
-            price_text: Raw price text extracted from HTML
-            
-        Returns:
-            int: Processed price value
-        """
-        try:
-            # Check if ریال or rial/Rial is present (case-insensitive for rial)
-            has_rial = 'ریال' in price_text or 'rial' in price_text.lower()
-            # Convert to English digits
-            price_text = to_english_digits(price_text)
-            # Remove all non-digit characters (removes separators like . / etc.)
-            price_text = re.sub(r"[^\d]", "", price_text)
-            # Convert to integer
-            price = int(price_text) if price_text else 0
-            # Divide by 10 if rial currency was detected
-            if has_rial and price > 0:
-                price = price // 10
-            return price
-        except Exception as e:
-            logger.error(f'Error processing price text: {e.__str__()}')
-            return 0
     
     def __find_description(self, description_selector:str|list|None=None) -> str:
         """Get product description
         """
         try:
+            # If description is already founded in the product data from meta tags do not proceed to extract the description again
             if self.product_description:
                 return  self.product_description
             if not self.soup:
                 return ''
-            # try og:description / twitter:description first
-            meta_desc = self._get_meta_content(['og:description', 'twitter:description'])
-            if meta_desc:
-                return meta_desc
-
             description: str = ''
             if not description_selector:
                 description_selector = ['.description', '.product-description', '.describe']
@@ -642,16 +641,21 @@ class Extractor:
                         description = elements[0].get_text().strip()
                         if description:
                             break
-            return description
+            if description:
+                logger.info(f'Extracted description using DOM selectors:\n{description}\n')
+            else:
+                logger.info(f'Did not found description using DOM selectors without raising error')
         except Exception as e:
-            logger.error(f'Error in getting product description: {e.__str__()}')
+            logger.error(f'Error in getting product description:\n{e.__str__()}\n')
         return description
 
     def __find_images(self, images_selector:str|list|None=None) -> list[str]:
         """Get product images
         """
         try:
+            # If images is already founded in the product data from meta tags do not proceed to extract the images again
             if self.product_images:
+                logger.info(f'Returning existing product_images ({len(self.product_images)} images)')
                 return self.product_images
             if not self.soup:
                 return []
@@ -666,9 +670,11 @@ class Extractor:
                 selectors = images_selector
             def add_url(raw_url) -> None:
                 if raw_url is None:
+                    logger.info('add_url in extracting images: raw_url is None, skipping')
                     return
                 u = str(raw_url).strip()
                 if not u:
+                    logger.info('add_url in extracting images: url empty after strip, skipping')
                     return
                 # handle protocol-relative URLs
                 if u.startswith('//'):
@@ -682,8 +688,10 @@ class Extractor:
                     if not re.search(r"\.(jpg|jpeg|png|webp|gif|svg|bmp|avif|ico)(?:[?#]|$)", u, re.I):
                         # allow some common image-like urls even without extension
                         if not re.search(r'/images?/|/img/|cdn|/uploads/|product', u, re.I):
+                            logger.info(f'add_url in extracting images: url does not look like an image, skipping: {u}')
                             return
                 if key in seen:
+                    logger.info(f'add_url in extracting images: duplicate image URL skipped: {u}')
                     return
                 seen.add(key)
                 images.append(u)
@@ -719,33 +727,24 @@ class Extractor:
                                 if m:
                                     url_in_style = m.group(1).strip('\'\" ')
                                     add_url(url_in_style)
-            # also check common meta tags
-            for mtag in self.soup.find_all('meta'):
-                if not isinstance(mtag, Tag):
-                    continue
-                prop = str(mtag.get('property') or mtag.get('name') or '').lower()
-                if prop in ('og:image', 'og:image:secure_url', 'twitter:image', 'twitter:image:src'):
-                    content = mtag.get('content')
-                    if content is not None:
-                        add_url(content)
-            return images
+            if images:
+                logger.info(f'Extracted {len(images)} images from DOM selectors\n')
+            else:
+                logger.info(f'Did not found images using DOM selectors without raising error')
         except Exception as e:
-            logger.error(f'Error in getting product images: {e.__str__()}')
-        return []
+            logger.error(f'Error in getting product images:\n{e.__str__()}\n')
+            logger.info('Returning empty images list due to exception\n')
+        return images
     
     def __find_company_name(self, company_selector:str|list|None=None) -> str:
         """Get product company name
         """
         try:
+            # If company name is already founded in the product data from meta tags do not proceed to extract the company name again
             if self.company_name:
                 return self.company_name
             if not self.soup:
                 return ''
-            # try og:site_name, author, brand meta tags first
-            meta_company = self._get_meta_content(['og:site_name', 'author', 'brand', 'og:brand'])
-            if meta_company:
-                return meta_company
-
             company_name: str = ''
             if not company_selector:
                 company_selector = ['.brand', '.manufacturer', '.company-name', '.vendor']
@@ -758,25 +757,23 @@ class Extractor:
                         company_name = elements[0].get_text().strip()
                         if company_name:
                             break
+            if company_name:
+                logger.info(f'Extracted company name using DOM selectors: {company_name}\n')
+            else:
+                logger.info(f'Did not found company name using DOM selectors without raising error')
         except Exception as e:
-            logger.error(f'Error in getting company name: {e.__str__()}')
+            logger.error(f'Error in getting company name:\n{e.__str__()}\n')
         return company_name
     
     def __find_category(self, category_selector:str|list|None=None) -> list[str]:
         """Get product category
         """
         try:
+            # If product category is already founded in the product data from meta tags do not proceed to extract the product category again
             if self.categories:
                 return self.categories
             if not self.soup:
                 return []
-            # try product:category / og:category meta tags first
-            meta_cat = self._get_meta_content(['product:category', 'og:category', 'category'])
-            if meta_cat:
-                # split by common separators
-                parts = [p.strip() for p in re.split(r'[>,|;/\\]', str(meta_cat)) if p.strip()]
-                return parts
-
             categories: list[str] = []
             if not category_selector:
                 category_selector = ['.category', '.product-category', '.tag', 'categories', '.breadcrumbs a', '.breadcrumb a']
@@ -787,6 +784,10 @@ class Extractor:
                     elements = self.soup.select(selector)
                     if elements:
                         categories.extend([el.get_text().strip() for el in elements])
+            if categories:
+                logger.info(f'Extracted categories using DOM selectors: {categories}')
+            else:
+                logger.info(f'Did not found categories using DOM selectors')
         except Exception as e:
-            logger.error(f'Error in getting product category: {e.__str__()}')
+            logger.error(f'Error in getting product category:\n{e.__str__()}\n')
         return categories
