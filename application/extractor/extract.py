@@ -83,7 +83,7 @@ class Extractor:
             
             # * 1) JSON-LD (structured)  2) Meta tags (og:, twitter:, product:)  3) DOM selectors
             logger.info('Try to scrape and extract product data using JSON-LD script...\n')
-            json_ld_data = self._extract_json_ld_data(res) if (res := self._scrape_json_ld()) else {}
+            json_ld_data = self._extract_json_ld_data(res) if (res := self._scrape_json_ld_script_tags()) else {}
             if json_ld_data:
                 self.product_data = subset_dict(json_ld_data, self.needed_fields)
                 logger.debug(f'\nAFTER EXTRACTION (JSON-LD): data extracted for webpage: "{self.product_url}":\n{self.product_data}')
@@ -241,7 +241,7 @@ class Extractor:
     
     # ! Following methods used to scrape data from web page using json+ld tag
     
-    def _scrape_json_ld(self) -> dict|None:
+    def _scrape_json_ld_script_tags(self) -> dict|None:
         """Scrape product data from JSON-LD script tags
 
         Returns:
@@ -386,7 +386,7 @@ class Extractor:
                         try:
                             price_value = int(price_str) if price_str else 0
                             try:
-                                if price_value and currency and currency.lower() in ('rial', 'ریال'):
+                                if price_value and currency and currency.lower() in ('rial', 'ریال', 'irr'):
                                     price_value = price_value // 10
                             except (ValueError, TypeError, AttributeError):
                                 pass
@@ -601,12 +601,17 @@ class Extractor:
                 return 0
             price: int = 0
             if not price_selector:
-                price_selector = ['.price', '.product-price', '.amount', '.current-price', '.woocommerce-Price-amount', '.price-value']
+                price_selector = ['.price', '.product-price', '.amount', '.current-price', '.woocommerce-Price-amount', '.price-value', '.min-price']
             if isinstance(price_selector, str):
                 price_selector = [price_selector]
             if isinstance(price_selector, list):
                 for selector in price_selector:
                     elements = self.soup.select(selector)
+                    # * If not found price elements using price selector use other methods
+                    if not elements:
+                        elements = self.soup.find_all('span', {'data-testid': 'price-final'})
+                    if not elements:
+                        elements = self.soup.find_all('span', {'data-testid': 'price-no-discount'})
                     if elements:
                         price_text: str = elements[0].get_text().strip()
                         price_value = process_price_text(price_text)

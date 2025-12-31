@@ -42,24 +42,24 @@ def clean_text(text: str) -> str:
 
 
 def process_price_text(price_text: str) -> int:
-        """Process raw price text to extract integer price value and adjust the price value if it was Rial
-        """
-        try:
-            price_value: int = 0
-            if not price_text:
-                return 0
-            # convert any non-english digits
-            price_text = to_english_digits(price_text)
-            # remove commas and spaces
-            price_text = price_text.replace(',', '').replace(' ', '')
-            # extract numeric part using regex
-            match = re.search(r'(\d+)', price_text)
-            if match:
-                price_str = match.group(1)
-                price_value = int(price_str)
-                # Check if the price text contains 'rial' or 'ریال' to adjust the value
-                if price_value and re.search(r'(rial|ریال)', price_text, re.I):
-                    price_value = price_value // 10
-        except Exception as e:
-            logger.error(f"\nError processing price text '{price_text}':\n{e}\n")    
-        return price_value
+    """Process raw price text to extract integer price value and adjust the price value if it was Rial
+    """
+    try:
+        price_value: int = 0
+        if not price_text:
+            return 0
+        # convert any non-english digits
+        price_text = to_english_digits(price_text)
+        # remove commas and spaces
+        price_text = price_text.replace(',', '').replace(' ', '')
+        # extract numeric part using regex
+        match = re.search(r'(\d+)', price_text)
+        if match:
+            price_str = match.group(1)
+            price_value = int(price_str)
+            # Check if the price text contains 'rial' or 'ریال' or 'IRR' to adjust the value
+            if price_value and re.search(r'(rial|ریال|IRR)', price_text, re.I):
+                price_value = price_value // 10
+    except Exception as e:
+        logger.error(f"\nError processing price text '{price_text}':\n{e}\n")    
+    return price_value
