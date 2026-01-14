@@ -13,56 +13,25 @@ logger = setup_logger(__name__)
 
 
 class RobotsTxtParser:
-    def __init__(self, base_url: str, driver: WebDriver|None=None):
+    """Parse robots.txt file for a domain or website
+    """
+    def __init__(self, base_url: str):
         self.base_url = base_url.rstrip('/')
+        # TODO: robots_url is more of an list of urls rather than of single url
+        
         self.robots_url = urljoin(self.base_url, '/robots.txt')
+        
         self.user_agents: Dict[str, Dict[str, List[str]]] = {}
         self.sitemaps: List[str] = []
-        self.driver = driver
 
-    def _fetch_and_parse(self, method: Optional[str] = None) -> None:
-        """
-        Fetches and parses the robots.txt file using the specified scraping method.
-
-        Args:
-            method (str, optional): The scraping method to use ('requests' or 'selenium').
-                                    If None, uses config.METHOD.
-        """
-        chosen_method: str = method if isinstance(method, str) and method else getattr(config, "METHOD", "requests")
-        methods = {
-            "requests": self._scrape_requests,
-            "selenium": self._scrape_selenium,
-        }
-        scrape_func = methods.get(chosen_method)
-        if not scrape_func:
-            logger.error(f"Unknown scraping method: {chosen_method}")
-            return
-        try:
-            scrape_func()
-        except Exception as e:
-            logger.error(f"Error fetching robots.txt using '{chosen_method}': {e}")
-    
-    def _scrape_requests(self) -> None:
-        """Scrapes the robots.txt file using requests module."""
+    def scrape_robots(self) -> None:
+        """Scrape the robots.txt file using requests module."""
         try:
             response = requests.get(self.robots_url, timeout=5)
             response.raise_for_status()
             self._parse_content(response.text)
         except requests.RequestException as e:
             logger.error(f"Error fetching robots.txt: {e}")
-
-    def _scrape_selenium(self) -> None:
-        """Scrapes the robots.txt file using Selenium module."""
-        try:
-            if not self.driver:
-                self.driver = setup_driver()
-            self.driver.get(self.robots_url)
-            content = self.driver.page_source
-            if not content:
-                raise ValueError("No content found in robots.txt")
-            self._parse_content(content)
-        except Exception as e:
-            logger.error(f"Error fetching robots.txt with Selenium: {e}")
 
     def _parse_content(self, content: str) -> None:
         """Parses the robots.txt content."""
@@ -115,18 +84,14 @@ class RobotsTxtParser:
     def get_rules(self, user_agent: str = '*') -> Optional[Dict[str, List[str]]]:
         """Returns rules for a specific user-agent."""
         return self.user_agents.get(user_agent)
-    
-    # USE CASE OF 'is_allowed' METHOD:
-    # parser = RobotsTxtParser("https://example.com")
-    # parser._fetch_and_parse()
-    # if parser.is_allowed("MyBot", "/some/path"):
-    #     # Proceed to crawl
+
 
 class RobotsExtLinks:
-    def __init__(self, robots_parser: RobotsTxtParser, driver: WebDriver|None=None) -> None:
+    """Extract products links from all the links that extracted by RobotsTxtParser
+    """
+    def __init__(self, robots_parser: RobotsTxtParser) -> None:
         self.robots_parser = robots_parser
         self.product_links: List[str] = []
-        self.driver = driver
 
     def find_product_sitemap_links(self) -> List[str]:
         """
@@ -224,11 +189,6 @@ class RobotsExtLinks:
             except Exception:
                 return None
 
-    def close(self):
-        if self.driver:
-            self.driver.quit()
-            self.driver = None
-
     def _extract_links(self, content: str) -> List[str]:
         """Extract all <loc> links from the sitemap content.
 
@@ -258,3 +218,16 @@ class RobotsExtLinks:
             url_pattern = r'https?://[^\s"<>\']+'
             links = re.findall(url_pattern, content)
         return links
+
+
+def start_extract_robots_links(url:str) -> list[str]:
+    """Start extracting robots.txt sitemaps links and find product links and return every product links found
+
+    Args:
+        url (str): _description_
+    """
+    rtp = RobotsTxtParser(url)
+    rtp.scrape_robots()
+    rel = RobotsExtLinks(rtp)
+    product_links = rel.find_product_sitemap_links()
+    return product_links
