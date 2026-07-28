@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "x-scraper"
+version = "0.1.0"
+description = "MVP ecommerce scraper for Iranian WordPress/WooCommerce sites."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["scraper", "ecommerce", "woocommerce", "python"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "beautifulsoup4>=4.13.3",
+    "lxml>=6.0.2",
+    "requests>=2.32.3",
+    "selenium>=4.31.0",
+]
+
+[project.scripts]
+x-scraper = "application.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]

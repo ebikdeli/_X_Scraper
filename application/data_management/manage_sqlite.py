@@ -1,46 +1,30 @@
 """
-Insert or Update product data extracted from e-commerce websites into SQLite database.
+Insert or update product data extracted from e-commerce websites into SQLite database.
 """
 
-from application.database.sqlite import SQLiteDBInit, ProductsCRUD
+from application.database.sqlite import SQLiteDB
 from logger.logger import setup_logger
-import sqlite3
-
+import config
 
 logger = setup_logger('scraper.log', __name__)
 
-
-def upsert_product_data(product_data: dict, db_connection: sqlite3.Connection|None=None, update: bool=False, url: str='') -> bool:
+def upsert_product_data(product_data: dict, db_file: str | None = None) -> bool:
     """
-    Insert or update product data into the SQLite database. By default try to insert every product data found into database but if update argument is True, if the url currently is in the database try to update the data instead of inserting data. Returns True if successful.
+    Insert or update product data into the SQLite database.
+
     Args:
         product_data (dict): Dictionary containing product details.
+        db_file (str | None): SQLite database file path. Defaults to config.DB_FILE.
+
+    Returns:
+        bool: True if the product was inserted or updated successfully.
     """
-    logger.info("Try to insert-update data into database...")
+    logger.info("Try to insert or update data into database...")
+    db_file = db_file or getattr(config, 'DB_FILE', 'scraped_data.db')
     try:
-        conn = db_connection
-        if not conn:
-            db = SQLiteDBInit()
-            conn = db.connection
-            if conn is None:
-                logger.warning("\nFailed to create database connection.")
-                return False
-        pd = ProductsCRUD(conn)
-        if update:
-            product_set: set = pd.get_product(url=product_data['url'])
-            product_list: list = list(product_set)
-            if product_set:
-                if pd.update_product(product_data, product_list[1]):
-                    # logger.info(f'product_id({product_list[0]}) updated')
-                    logger.info(f'product_id({product_list[0]}) updated')
-                    return True
-        else:
-            # Insert new record into products
-            if pd.insert_product(product_data):
-                # logger.info(f"Inserted new product: {product_data}")
-                logger.info(f"Inserted new product: {product_data}")
-                return True
-        logger.warning(f"Failed to insert product into products table")
+        db = SQLiteDB(db_file)
+        return db.upsert_product(product_data)
     except Exception as e:
-        logger.error(f"Error extract and inserting product data into products: {e}")
-    return False
+        logger.error("Error extracting and inserting product data into products")
+        print(f"Error extracting and inserting product data into products: {e}")
+        return False

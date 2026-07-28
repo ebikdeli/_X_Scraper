@@ -1,9 +1,13 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from application.driver.chrome import setup_driver
+from application.driver.chrome import setup_driver, shutdown_driver
 
 
 class TestSetupDriver(unittest.TestCase):
+    def setUp(self):
+        shutdown_driver()
+        self.addCleanup(shutdown_driver)
+
     @patch("application.driver.chrome.webdriver.Chrome")
     @patch("application.driver.chrome.Options")
     def test_setup_driver_default(self, mock_options, mock_chrome):
@@ -48,3 +52,17 @@ class TestSetupDriver(unittest.TestCase):
         mock_options_instance.add_argument.assert_any_call('--proxy-server=http://proxy1:8080')
         mock_chrome.assert_called_once_with(options=mock_options_instance)
         self.assertEqual(driver, mock_driver)
+
+    @patch("application.driver.chrome.webdriver.Chrome")
+    @patch("application.driver.chrome.Options")
+    def test_setup_driver_reuses_alive_driver(self, mock_options, mock_chrome):
+        mock_options_instance = MagicMock()
+        mock_options.return_value = mock_options_instance
+        mock_driver = MagicMock()
+        mock_chrome.return_value = mock_driver
+
+        first = setup_driver()
+        second = setup_driver()
+
+        self.assertEqual(first, second)
+        mock_chrome.assert_called_once_with(options=mock_options_instance)

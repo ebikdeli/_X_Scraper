@@ -1,5 +1,7 @@
+import logging
 import re
-from venv import logger
+
+logger = logging.getLogger(__name__)
 
 
 def to_english_digits(text: str) -> str:

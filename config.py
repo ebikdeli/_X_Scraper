@@ -1,42 +1,42 @@
+﻿"""
+Configuration for the X_Scraper project.
+Values can be overridden with environment variables prefixed by X_SCRAPER_.
 """
-Configuration file for the _X_Scraper project.
-This file holds configuration parameters such as proxy lists, target URLs, and RabbitMQ settings for message queuing.
-"""
 
-# List of proxies to rotate through. Replace with your actual proxies.
-PROXIES: list[str] = [
-    "http://proxy1.example.com:8080",
-    "http://proxy2.example.com:8080",
-    "http://proxy3.example.com:8080"
-]
+import os
+from typing import List
 
-# Sample Amazon URLs to scrape. Replace these with real product URLs.
-AMAZON_URLS: list[str] = [
-    "https://www.amazon.com/dp/B08N5WRWNW",
-    "https://www.amazon.com/dp/B07XJ8C8F5",
-    "https://www.amazon.com/dp/B09G3HRMVB"
-]
 
-# RabbitMQ settings
-RABBITMQ_URL: str = "amqp://guest:guest@localhost:5672/"
-QUEUE_NAME: str = "amazon_scrape_queue"
+def _env_list(name: str, default: List[str]) -> List[str]:
+    """Get a list of strings from an environment variable, splitting by commas.
+    If the environment variable is not set, return the default list.
+    """
+    value: str|None = os.getenv(name)
+    if not value:
+        return default
+    return [item.strip() for item in value.split(',') if item.strip()]
 
-# Default ethod to used (requests or selenium)
-METHOD: str = 'selenium'
+# Configuration variables with default values, can be overridden by environment variables
 
-# While using selenium, Reuse current driver for the next webpage.
-REUSE_DRIVER: bool = True
+PROXIES: List[str] = _env_list(
+    'X_SCRAPER_PROXIES',
+    [
+        'http://proxy1.example.com:8080',
+        'http://proxy2.example.com:8080',
+        'http://proxy3.example.com:8080',
+    ]
+)
 
-# Sleeping time in selenium
-SLEEP_TIME: int = 4
-
-# Selenium driver configurations
-SELENIUM_HEADLESS: bool = False
-SELENIUM_USE_PROXY: bool = False
-SELENIUM_OPTIMIZED: bool = True
-SELENIUM_SILENT_MODE_LEVEL: int = 2
-SELENIUM_WINDOWZ_SIZE: str = '800,600'  # width,height
-SELENIUM_DISABLE_CSS: bool = False
-SELENIUM_DISABLE_IMAGE: bool = True
-SELENIUM_IMPLICIT_WAIT: int = 120
-SELENIUM_TIMEOUT: int = 50
+METHOD: str = os.getenv('X_SCRAPER_METHOD', 'selenium')
+DB_FILE: str = os.getenv('X_SCRAPER_DB_FILE', 'scraped_data.db')
+REQUEST_TIMEOUT: int = int(os.getenv('X_SCRAPER_REQUEST_TIMEOUT', '10'))
+SLEEP_TIME: int = int(os.getenv('X_SCRAPER_SLEEP_TIME', '4'))
+SELENIUM_HEADLESS: bool = os.getenv('X_SCRAPER_SELENIUM_HEADLESS', 'False').lower() in ('1', 'true', 'yes')
+SELENIUM_USE_PROXY: bool = os.getenv('X_SCRAPER_SELENIUM_USE_PROXY', 'False').lower() in ('1', 'true', 'yes')
+SELENIUM_OPTIMIZED: bool = os.getenv('X_SCRAPER_SELENIUM_OPTIMIZED', 'True').lower() in ('1', 'true', 'yes')
+SELENIUM_SILENT_MODE_LEVEL: int = int(os.getenv('X_SCRAPER_SELENIUM_SILENT_MODE_LEVEL', '2'))
+SELENIUM_WINDOW_SIZE: str = os.getenv('X_SCRAPER_SELENIUM_WINDOW_SIZE', '800,600')
+SELENIUM_DISABLE_CSS: bool = os.getenv('X_SCRAPER_SELENIUM_DISABLE_CSS', 'False').lower() in ('1', 'true', 'yes')
+SELENIUM_DISABLE_IMAGE: bool = os.getenv('X_SCRAPER_SELENIUM_DISABLE_IMAGE', 'True').lower() in ('1', 'true', 'yes')
+SELENIUM_IMPLICIT_WAIT: int = int(os.getenv('X_SCRAPER_SELENIUM_IMPLICIT_WAIT', '10'))
+SELENIUM_TIMEOUT: int = int(os.getenv('X_SCRAPER_SELENIUM_TIMEOUT', '50'))

@@ -174,5 +174,5 @@ class TestRobotsExtLinks(unittest.TestCase):
         mock_driver = MagicMock()
         ext_links.driver = mock_driver
         ext_links.close()
-        mock_driver.quit.assert_called_once()
+        mock_driver.quit.assert_not_called()
         self.assertIsNone(ext_links.driver)

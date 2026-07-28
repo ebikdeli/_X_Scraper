@@ -4,40 +4,78 @@ It is designed to be imported and used in the scraping logic.
 It uses the selenium library to create a headless Chrome driver instance with specific configurations.
 """
 
+import atexit
 import random
+from typing import Optional
+
 from selenium import webdriver
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.chrome.options import Options
+
 import config
+
+PROXIES = config.PROXIES
+
+_SHARED_DRIVER: Optional[webdriver.Chrome] = None
+
+
+def _is_driver_alive(driver: webdriver.Chrome) -> bool:
+    """Return True when the cached Chrome session still accepts commands."""
+    try:
+        driver.execute_script("return 1")
+        return True
+    except WebDriverException:
+        return False
+    except Exception:
+        return False
 
 
 def setup_driver(
-    headless: bool = config.SELENIUM_HEADLESS,
-    use_proxy: bool = config.SELENIUM_USE_PROXY,
-    optimized: bool = config.SELENIUM_OPTIMIZED,
-    silent_mode_level: int = config.SELENIUM_SILENT_MODE_LEVEL,
-    windows_size: str = config.SELENIUM_WINDOWZ_SIZE,
-    disable_css: bool = config.SELENIUM_DISABLE_CSS,
-    disable_image: bool = config.SELENIUM_DISABLE_IMAGE,
-    implicit_wait: int = config.SELENIUM_IMPLICIT_WAIT,
-    timeout: int = config.SELENIUM_TIMEOUT
+    headless: Optional[bool] = None,
+    use_proxy: Optional[bool] = None,
+    optimized: Optional[bool] = None,
+    silent_mode_level: Optional[int] = None,
+    windows_size: Optional[str] = None,
+    disable_css: Optional[bool] = None,
+    disable_image: Optional[bool] = None,
+    implicit_wait: Optional[int] = None,
+    timeout: Optional[int] = None,
+    force_new: bool = False,
 ) -> webdriver.Chrome:
     """
-    Initialize and return a headless Selenium Chrome driver with proxy rotation.
+    Create and cache one Selenium Chrome driver for the application lifetime.
 
-    Args:
-        headless (bool): Run Chrome in headless mode.
-        use_proxy (bool): Enable proxy rotation.
-        optimized (bool): Enable performance optimizations.
-        silent_mode_level (int): Chrome log level.
-        windows_size (str): Window size.
-        disable_css (bool): Disable CSS loading.
-        disable_image (bool): Disable image loading.
-        implicit_wait (int): Implicit wait time.
-        timeout (int): Page load timeout.
-
-    Returns:
-        webdriver.Chrome: Configured Chrome driver instance.
+    The driver is reused across requests and only closed at process shutdown to
+    avoid repeatedly paying the startup cost of a full Chrome instance.
     """
+    global _SHARED_DRIVER
+
+    if force_new:
+        shutdown_driver()
+    elif _SHARED_DRIVER is not None:
+        if _is_driver_alive(_SHARED_DRIVER):
+            return _SHARED_DRIVER
+        shutdown_driver()
+
+    if headless is None:
+        headless = config.SELENIUM_HEADLESS
+    if use_proxy is None:
+        use_proxy = config.SELENIUM_USE_PROXY
+    if optimized is None:
+        optimized = config.SELENIUM_OPTIMIZED
+    if silent_mode_level is None:
+        silent_mode_level = config.SELENIUM_SILENT_MODE_LEVEL
+    if windows_size is None:
+        windows_size = config.SELENIUM_WINDOW_SIZE
+    if disable_css is None:
+        disable_css = config.SELENIUM_DISABLE_CSS
+    if disable_image is None:
+        disable_image = config.SELENIUM_DISABLE_IMAGE
+    if implicit_wait is None:
+        implicit_wait = config.SELENIUM_IMPLICIT_WAIT
+    if timeout is None:
+        timeout = config.SELENIUM_TIMEOUT
+
     chrome_options = Options()
     if headless:
         chrome_options.add_argument("--headless")
@@ -47,10 +85,8 @@ def setup_driver(
         chrome_options.add_argument('--ignore-certificate-errors-spki-list')
         chrome_options.add_argument('--ignore-certificate-errors')
         chrome_options.add_argument('--ignore-ssl-errors')
-        # chrome_options.add_argument("--disable-infobars")
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-notifications")
-        # Following 4 options are used to test if performance can get better
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-software-rasterizer")
         chrome_options.add_argument("--disable-features=NetworkService")
@@ -58,17 +94,13 @@ def setup_driver(
     if windows_size:
         chrome_options.add_argument(f"--window-size={windows_size}")
 
-    # Silent mode
     chrome_options.add_argument(f"--log-level={str(silent_mode_level)}")
 
-    # Combine preferences for images and CSS
     prefs = {}
     if disable_image:
-        # Both lines can disable image loading but the first one is more common
         chrome_options.add_argument('--blink-settings=imagesEnabled=false')
         prefs["profile.managed_default_content_settings.images"] = 2
     if disable_css:
-        # This disables a wide range of content types including CSS and JS
         prefs["profile.default_content_setting_values"] = {
             "cookies": 2, "images": 2, "javascript": 2, "plugins": 2, "popups": 2,
             "geolocation": 2, "notifications": 2, "auto_select_certificate": 2,
@@ -82,22 +114,40 @@ def setup_driver(
     if prefs:
         chrome_options.add_experimental_option("prefs", prefs)
     else:
-        # At least disable notifications if nothing else
         chrome_options.add_experimental_option(
             "prefs", {"profile.default_content_setting_values.notifications": 2}
         )
 
-    # Rotate proxy
-    if use_proxy and config.PROXIES:
-        proxy = random.choice(config.PROXIES)
+    if use_proxy and PROXIES:
+        proxy = random.choice(PROXIES)
         chrome_options.add_argument(f'--proxy-server={proxy}')
 
-    # Create the Chrome driver instance
     try:
-        driver = webdriver.Chrome(options=chrome_options)
-        driver.set_page_load_timeout(timeout)
-        driver.implicitly_wait(implicit_wait)
-        return driver
-    except Exception as e:
-        # You may want to log this error in production
+        _SHARED_DRIVER = webdriver.Chrome(options=chrome_options)
+        _SHARED_DRIVER.set_page_load_timeout(timeout)
+        _SHARED_DRIVER.implicitly_wait(implicit_wait)
+        return _SHARED_DRIVER
+    except Exception:
         raise
+
+
+def restart_driver() -> webdriver.Chrome:
+    """Restart Chrome and return a fresh shared Selenium driver."""
+    return setup_driver(force_new=True)
+
+
+def shutdown_driver() -> None:
+    """Close the shared Selenium driver if it exists and clear the cached reference."""
+    global _SHARED_DRIVER
+
+    driver = _SHARED_DRIVER
+    _SHARED_DRIVER = None
+    if driver is None:
+        return
+    try:
+        driver.quit()
+    except Exception:
+        pass
+
+
+atexit.register(shutdown_driver)

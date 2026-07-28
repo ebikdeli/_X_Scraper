@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 
-def setup_logger(log_file="scraper.log", logger_name=None):
+def setup_logger(log_file="scraper.log", logger_name=None) -> logging.Logger:
     """
     Set up logger with both file and console handlers
     

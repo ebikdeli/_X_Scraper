@@ -1,7 +1,8 @@
-import unittest
+﻿import unittest
 from unittest.mock import patch, MagicMock
 from sqlite3 import Error
 from application.database.sqlite import SQLiteDB
+
 
 class TestSQLiteDB(unittest.TestCase):
     def setUp(self):
@@ -11,65 +12,72 @@ class TestSQLiteDB(unittest.TestCase):
         self.mock_conn = MagicMock()
         self.mock_cursor = MagicMock()
         self.mock_connect.return_value = self.mock_conn
-        self.mock_conn.execute.return_value = self.mock_cursor
+        self.mock_conn.cursor.return_value = self.mock_cursor
 
     def test_create_connection_success(self):
         db = SQLiteDB("test.db")
-        self.mock_connect.assert_called_with("test.db")
-        self.assertEqual(db.conn, self.mock_conn)
+        self.mock_connect.assert_called_with("test.db", check_same_thread=False)
+        self.assertEqual(db.connection, self.mock_conn)
 
     def test_create_connection_failure(self):
-        # Patch to raise sqlite3.Error, which is what the code expects
         with patch("application.database.sqlite.sqlite3.connect", side_effect=Error("fail")):
             db = SQLiteDB("fail.db")
-            self.assertIsNone(db.create_connection())
+            self.assertIsNone(db.connection)
 
     def test_create_table_success(self):
-        db = SQLiteDB("test.db")
+        SQLiteDB("test.db")
         self.mock_conn.execute.assert_called()
         self.mock_conn.commit.assert_called()
 
     def test_create_table_failure(self):
-        # Patch execute to raise sqlite3.Error, not Exception
         self.mock_conn.execute.side_effect = Error("table error")
         db = SQLiteDB("test.db")
-        # Should print error, but not raise
+        self.assertIsNotNone(db.connection)
+        self.mock_conn.execute.assert_called()
+        self.mock_conn.commit.assert_not_called()
 
-    def test_insert_data_success(self):
+    def test_upsert_product_success(self):
         db = SQLiteDB("test.db")
         product = {
             "url": "http://a.com",
             "title": "Title",
-            "price": "10",
+            "price": 10,
             "description": "desc",
             "images": ["img1", "img2"],
             "name": "Name",
             "company_name": "Company",
-            "category": "Cat"
+            "category": ["Cat"],
+            "currency": "USD",
+            "availability": "InStock",
+            "sku": "SKU123",
+            "mpn": "MPN123",
+            "rating": 4.5,
+            "review_count": 10,
         }
-        db.insert_data(product)
-        self.mock_conn.execute.assert_any_call(
-            '''INSERT INTO products (url, title, price, description, images, name, company_name, category)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-            (
-                "http://a.com", "Title", "10", "desc", "img1,img2", "Name", "Company", "Cat"
-            )
-        )
+        self.mock_cursor.execute.return_value = None
+        result = db.upsert_product(product)
+        self.assertTrue(result)
+        self.mock_cursor.execute.assert_called()
         self.mock_conn.commit.assert_called()
 
-    def test_insert_data_failure(self):
+    def test_upsert_product_missing_url(self):
         db = SQLiteDB("test.db")
-        # Patch execute to raise sqlite3.Error, not Exception
-        self.mock_conn.execute.side_effect = Error("insert error")
+        product = {"title": "No URL"}
+        result = db.upsert_product(product)
+        self.assertFalse(result)
+
+    def test_upsert_product_failure(self):
+        db = SQLiteDB("test.db")
+        self.mock_cursor.execute.side_effect = Error("insert error")
         product = {
             "url": "http://a.com",
             "title": "Title",
-            "price": "10",
+            "price": 10,
             "description": "desc",
-            "images": ["img1", "img2"],
+            "images": ["img1"],
             "name": "Name",
             "company_name": "Company",
-            "category": "Cat"
+            "category": ["Cat"],
         }
-        db.insert_data(product)
-        # Should print error, but not raise
+        result = db.upsert_product(product)
+        self.assertFalse(result)
